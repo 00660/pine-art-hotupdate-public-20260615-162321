@@ -111,6 +111,7 @@ MAKE_ARGS=(
   CLANG_TRIPLE=aarch64-linux-gnu-
   CROSS_COMPILE=aarch64-linux-gnu-
   CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+  CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
 )
 
 mapfile -t KERNEL_CONFIGS < <(jq -r '.build.kernel_configs[]' "$RECIPE")

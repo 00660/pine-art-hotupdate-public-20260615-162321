@@ -111,6 +111,9 @@ MAKE_ARGS=(
   CLANG_TRIPLE=aarch64-linux-gnu-
   CROSS_COMPILE=aarch64-linux-gnu-
   CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+  CLANG_TARGET_ARM32=--target=arm-linux-gnueabi
+  CLANG_GCC32_TC=--gcc-toolchain=/usr
+  CLANG_PREFIX32=-B/usr/bin/arm-linux-gnueabi-
   CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
 )
 

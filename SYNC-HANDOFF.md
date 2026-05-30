@@ -63,6 +63,8 @@
 
 如果缺官方 OTA、缺完整 kernel 源码、缺共享 LineageOS 分支或缺 `TARGET_KERNEL_CONFIG`，recipe 会进入 `lineage-xiaomi-blocked.json`，构建 workflow 会拒绝猜参数。
 
+`alioth` 首次 GitHub Actions 构建验证失败在 kernel 编译阶段，真实错误为 `drivers/staging/qcacld-3.0/.../wlan_hdd_assoc.o: /bin/sh: Argument list too long`。原因是 kernel 源码和 out 目录位于 GitHub workspace 的长路径下，qcacld 编译命令超过参数长度限制。已把 `scripts/build-lineage-recipe.sh` 默认 `WORK_DIR` 改到 `${RUNNER_TEMP:-/tmp}/lrec`，并缩短 `SRC_DIR=k`、`OUT_DIR=o`。
+
 本次修改前备份：
 
 - `README.md.bak-20260530-225835`
@@ -71,3 +73,5 @@
 - `SYNC-HANDOFF.md.bak-20260530-232513`
 - `scripts/xda-xiaomi-catalog.mjs.bak-20260530-232513`
 - `.github/workflows/discover-xiaomi-xda.yml.bak-20260530-232513`
+- `scripts/build-lineage-recipe.sh.bak-20260531-010801`
+- `SYNC-HANDOFF.md.bak-20260531-010801`

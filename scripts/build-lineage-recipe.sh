@@ -8,9 +8,9 @@ fi
 
 RECIPE="$1"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORK_DIR="${WORK_DIR:-$ROOT_DIR/work/lineage-recipe}"
-SRC_DIR="${SRC_DIR:-$WORK_DIR/kernel}"
-OUT_DIR="${OUT_DIR:-$WORK_DIR/out}"
+WORK_DIR="${WORK_DIR:-${RUNNER_TEMP:-/tmp}/lrec}"
+SRC_DIR="${SRC_DIR:-$WORK_DIR/k}"
+OUT_DIR="${OUT_DIR:-$WORK_DIR/o}"
 BASE_BOOT="$WORK_DIR/base/boot.img"
 ARTIFACT_DIR="$ROOT_DIR/artifacts/lineage-recipe"
 JOBS="${JOBS:-$(nproc)}"

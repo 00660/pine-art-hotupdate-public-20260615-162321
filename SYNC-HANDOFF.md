@@ -67,6 +67,16 @@
 
 第二次 `alioth` 构建验证失败在 recipe 解析阶段，真实错误为 GitHub code search `429 Too Many Requests`。构建单个 codename 不再使用 code search，已改为直接读取 `codename.yml` 和 `codename_variantN.yml`，例如 `alioth_variant1.yml`。
 
+第三次 `alioth` GitHub Actions 构建验证成功：
+
+- workflow run: `https://github.com/00660/android-docker-boot-builder/actions/runs/26689978219`
+- commit: `1795d71f8e1491afdbe2679dba06a7d46c83ee0f`
+- artifact: `lineage-docker-boot`
+- artifact id: `7310275308`
+- artifact zip size: `49,846,068` bytes
+- `boot-docker.img` size: `55,001,088` bytes
+- artifact 内容包含 `boot-docker.img`、`boot-docker.img.sha256`、`Image`、`config-docker-final`、`recipe.json`、`upstream-commit`、`upstream-ref`、`upstream-repo`
+
 本次修改前备份：
 
 - `README.md.bak-20260530-225835`
@@ -79,3 +89,4 @@
 - `SYNC-HANDOFF.md.bak-20260531-010801`
 - `scripts/lineage-xiaomi-catalog.mjs.bak-20260531-011048`
 - `SYNC-HANDOFF.md.bak-20260531-011048`
+- `SYNC-HANDOFF.md.bak-20260531-021421`

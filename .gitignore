@@ -3,3 +3,7 @@ devices/*/work/
 devices/*/artifacts/
 *.log
 *.tmp
+*.bak-*
+node_modules/
+package.json
+package-lock.json

@@ -1,0 +1,63 @@
+name: Discover LineageOS Xiaomi recipes
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_devices:
+        description: "0 means all Xiaomi devices listed by LineageOS wiki"
+        required: false
+        default: "0"
+      commit_catalog:
+        description: "Commit generated catalog and recipes back to this private repo"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+  schedule:
+    - cron: "23 2 * * 6"
+
+permissions:
+  contents: write
+
+jobs:
+  discover:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Generate recipes from official LineageOS sources
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          LINEAGE_MAX_DEVICES: ${{ github.event.inputs.max_devices || '0' }}
+        run: node scripts/lineage-xiaomi-catalog.mjs
+
+      - name: Upload catalog artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lineage-xiaomi-catalog
+          path: |
+            catalog/lineage-*.json
+            recipes/lineage/*.json
+          if-no-files-found: error
+
+      - name: Commit catalog
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.commit_catalog == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add catalog recipes/lineage
+          if git diff --cached --quiet; then
+            echo "No catalog changes."
+          else
+            git commit -m "Update LineageOS Xiaomi catalog"
+            git push
+          fi

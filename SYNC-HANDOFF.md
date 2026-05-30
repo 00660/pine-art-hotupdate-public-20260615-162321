@@ -35,3 +35,39 @@
 
 - `PINE_BOOT_SOURCE_URL=https://sourceforge.net/projects/pixelextended/files/pine/PixelExtended_pine-12.0-20220227-0902-OFFICIAL.zip/download`
 - `RIVA_BOOT_SOURCE_URL=https://sourceforge.net/projects/crdroid/files/rova/10.x/crDroidAndroid-14.0-20241015-rova-v10.9.zip/download`
+
+## 2026-05-30 LineageOS Xiaomi 采集更新
+
+按最新方向，停止 XDA 采集，改为只使用 LineageOS 官方来源：
+
+- `https://wiki.lineageos.org/devices/`
+- `https://github.com/LineageOS`
+- `https://download.lineageos.org/api/v2/devices/<codename>/builds`
+
+新增事实采集链路：
+
+- `.github/workflows/discover-lineage-xiaomi.yml`
+- `scripts/lineage-xiaomi-catalog.mjs`
+- `catalog/README.md`
+- `recipes/lineage/README.md`
+
+采集路径固定为 `LineageOS wiki 设备数据 -> LineageOS GitHub device/kernel repo -> BoardConfig -> LineageOS 官方 download API`。脚本会校验 device tree 与 kernel repo 是否存在同一个 LineageOS 分支，并检查 kernel repo 根目录是否为完整源码树。
+
+新增通用 recipe 构建入口：
+
+- `.github/workflows/build-lineage-recipe.yml`
+- `scripts/build-lineage-recipe.sh`
+- `config/docker-required.fragment`
+
+构建 workflow 只接受 `status=build_ready` 的 recipe。也可以直接输入 LineageOS codename；这时 workflow 会先运行 `scripts/lineage-xiaomi-catalog.mjs` 生成该 codename 的 recipe。之后它下载官方 LineageOS OTA zip，从 `boot.img` 或 `payload.bin` 提取 boot 基线，编译同分支 LineageOS kernel，合并 Docker config fragment，并用 `scripts/repack-boot.sh` 生成 `boot-docker.img`。
+
+如果缺官方 OTA、缺完整 kernel 源码、缺共享 LineageOS 分支或缺 `TARGET_KERNEL_CONFIG`，recipe 会进入 `lineage-xiaomi-blocked.json`，构建 workflow 会拒绝猜参数。
+
+本次修改前备份：
+
+- `README.md.bak-20260530-225835`
+- `SYNC-HANDOFF.md.bak-20260530-225835`
+- `README.md.bak-20260530-232513`
+- `SYNC-HANDOFF.md.bak-20260530-232513`
+- `scripts/xda-xiaomi-catalog.mjs.bak-20260530-232513`
+- `.github/workflows/discover-xiaomi-xda.yml.bak-20260530-232513`

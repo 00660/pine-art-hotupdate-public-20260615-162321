@@ -1,0 +1,59 @@
+name: Build LineageOS Docker boot image
+
+on:
+  workflow_dispatch:
+    inputs:
+      codename:
+        description: "LineageOS device codename. Used when recipe is empty."
+        required: false
+        default: "alioth"
+      recipe:
+        description: "Optional path to a build_ready recipe JSON, for example recipes/lineage/alioth.json"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Resolve recipe
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INPUT_RECIPE: ${{ inputs.recipe }}
+          INPUT_CODENAME: ${{ inputs.codename }}
+        run: |
+          if [ -n "$INPUT_RECIPE" ]; then
+            echo "RECIPE_PATH=$INPUT_RECIPE" >> "$GITHUB_ENV"
+          else
+            LINEAGE_DEVICE="$INPUT_CODENAME" node scripts/lineage-xiaomi-catalog.mjs
+            echo "RECIPE_PATH=recipes/lineage/$INPUT_CODENAME.json" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build Docker-capable boot image
+        run: |
+          chmod +x scripts/build-lineage-recipe.sh
+          scripts/build-lineage-recipe.sh "$RECIPE_PATH"
+
+      - name: Upload boot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lineage-docker-boot
+          path: |
+            artifacts/lineage-recipe/*
+          if-no-files-found: error

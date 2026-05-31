@@ -147,6 +147,16 @@ Xiaomi 全量构建 run `26696815773` 当前观察到 `beryllium`、`alioth`、`
 
 全厂商 discover run `26698230007` 已确认失败原因是各厂商 job 重复读取全量 wiki 设备 YAML，导致 GitHub API 403。已改为 prepare 阶段 sparse clone wiki 并生成本地 device-data；修复后需要取消该 run，重新触发 `discover-lineage-vendors.yml`。
 
+修复后的全厂商 discover run `26698886477` 成功完成，Action 提交 `6371182` 已合并到 `main`：
+
+- 43 个官方 vendor_short
+- 606 个 LineageOS recipe
+- 239 个 `build_ready`
+- 367 个 blocked
+- 架构分布：`arm64=415`、`arm=168`、`arm64-arm=18`、`x86_64-x86=4`、`x86=1`
+- `build_ready` 前几名：`xiaomi=54`、`motorola=47`、`oneplus=33`、`samsung=32`、`sony=21`、`lge=10`
+- 全厂商 `build_ready` 数量 239，低于 `build-lineage-vendors-ready.yml` 的 250 matrix 上限，可以单次触发全厂商 build；但当前先不抢 Xiaomi 全量编译资源。
+
 本次修改前备份：
 
 - `README.md.bak-20260530-225835`
@@ -183,3 +193,4 @@ Xiaomi 全量构建 run `26696815773` 当前观察到 `beryllium`、`alioth`、`
 - `scripts/lineage-xiaomi-catalog.mjs.bak-20260531-075920`
 - `.github/workflows/discover-lineage-vendors.yml.bak-20260531-075920`
 - `SYNC-HANDOFF.md.bak-20260531-075920`
+- `SYNC-HANDOFF.md.bak-20260531-085816`

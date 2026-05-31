@@ -50,6 +50,7 @@ Xiaomi 兼容入口：
 - `vendors` 留空时构建全厂商 catalog 里的 ready recipe
 - `vendors` 可传逗号分隔 `vendor_short`
 - `devices` 可传逗号分隔 codename，或 `vendor_short/codename`
+- `max_parallel` 控制该 workflow 自己的并发数；默认 3，可传 1 降低对其他构建的影响
 - 为避免 GitHub Actions matrix 上限，单次 ready 项超过 250 时需要按 `vendors` 或 `devices` 拆分运行
 
 ## Downloads

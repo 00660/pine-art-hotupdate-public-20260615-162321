@@ -11,6 +11,10 @@ on:
         description: "Optional comma-separated codenames or vendor_short/codename entries."
         required: false
         default: ""
+      max_parallel:
+        description: "Maximum parallel build jobs for this workflow run."
+        required: false
+        default: "3"
 
 permissions:
   contents: write
@@ -108,7 +112,7 @@ jobs:
     timeout-minutes: 240
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: ${{ fromJSON(github.event.inputs.max_parallel || '3') }}
       matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
     steps:
       - name: Checkout

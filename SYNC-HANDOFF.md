@@ -157,6 +157,8 @@ Xiaomi 全量构建 run `26696815773` 当前观察到 `beryllium`、`alioth`、`
 - `build_ready` 前几名：`xiaomi=54`、`motorola=47`、`oneplus=33`、`samsung=32`、`sony=21`、`lge=10`
 - 全厂商 `build_ready` 数量 239，低于 `build-lineage-vendors-ready.yml` 的 250 matrix 上限，可以单次触发全厂商 build；但当前先不抢 Xiaomi 全量编译资源。
 
+按用户要求准备触发“排除 Xiaomi 的全厂商 build”。`build-lineage-vendors-ready.yml` 已新增 `max_parallel` 输入，默认 3；本次排除 Xiaomi 的 run 使用 `max_parallel=1`，降低对 Xiaomi run `26696815773` 的并发挤压。排除 Xiaomi 后共有 185 个 `build_ready` recipe。
+
 本次修改前备份：
 
 - `README.md.bak-20260530-225835`
@@ -194,3 +196,6 @@ Xiaomi 全量构建 run `26696815773` 当前观察到 `beryllium`、`alioth`、`
 - `.github/workflows/discover-lineage-vendors.yml.bak-20260531-075920`
 - `SYNC-HANDOFF.md.bak-20260531-075920`
 - `SYNC-HANDOFF.md.bak-20260531-085816`
+- `.github/workflows/build-lineage-vendors-ready.yml.bak-20260531-115331`
+- `README.md.bak-20260531-115331`
+- `SYNC-HANDOFF.md.bak-20260531-115331`

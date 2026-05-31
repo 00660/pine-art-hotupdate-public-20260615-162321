@@ -57,6 +57,8 @@ Xiaomi 兼容入口：
 
 构建成功后会发布到 GitHub Releases 下载区。
 
+Actions artifact 只作为构建过程里的短期中转产物，保留 1 天。长期下载请使用 GitHub Releases，避免 Actions artifact 存储占满后阻塞新 job。
+
 下载区展示名使用公开机型名，不使用 LineageOS 内部 codename。文件名格式：
 
 ```text

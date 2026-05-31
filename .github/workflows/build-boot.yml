@@ -127,6 +127,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
+          retention-days: 1
           path: |
             devices/${{ matrix.device }}/artifacts/boot-docker.img
             devices/${{ matrix.device }}/artifacts/boot-docker.img.sha256

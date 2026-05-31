@@ -71,7 +71,7 @@ log "Install build dependencies"
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
   bc bison build-essential ca-certificates ccache curl file flex git jq \
-  libelf-dev libssl-dev lld llvm clang \
+  dwarves libelf-dev libssl-dev lld llvm clang \
   gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
   python3 rsync unzip xz-utils
 
@@ -106,6 +106,7 @@ MAKE_ARGS=(
   LLVM=1
   LLVM_IAS=1
   CC=clang
+  LD=ld.lld
   HOSTCC=clang
   HOSTCXX=clang++
   CLANG_TRIPLE=aarch64-linux-gnu-
@@ -140,6 +141,7 @@ log "Prepare kernel config"
 make "${MAKE_ARGS[@]}" "$BASE_DEFCONFIG"
 FRAGMENTS=()
 for config in "${FRAGMENT_CONFIGS[@]}"; do
+  config="${config//'$(PRODUCT_DEVICE)'/$DEVICE}"
   FRAGMENTS+=("$SRC_DIR/arch/$ARCH/configs/$config")
 done
 FRAGMENTS+=("$ROOT_DIR/$FRAGMENT_PATH")

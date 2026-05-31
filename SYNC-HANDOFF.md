@@ -164,6 +164,22 @@ Xiaomi 全量构建 run `26696815773` 当前观察到 `beryllium`、`alioth`、`
 - vendors: `asus,essential,fairphone,fxtec,google,lenovo,lge,motorola,nintendo,nokia,nothing,nubia,nvidia,oneplus,osom,razer,realme,samsung,shift,smartisan,sony,vsmart,xelex,zte`
 - 初始状态：prepare 成功，`ZenFone 8` 开始编译，后续构建按 `max_parallel=1` 串行推进。
 
+Xiaomi 全量构建 run `26696815773` 已完成：30 success，25 failure。已确认失败类型：
+
+- 多数新高通 GKI 设备的 recipe 包含 `vendor/$(PRODUCT_DEVICE)_GKI.config`，构建时被当成字面路径，导致 `merge_config.sh` 报文件不存在。
+- `miatoll` 旧内核使用 `aarch64-linux-gnu-ld.gold` 链接 ThinLTO，报 `--thinlto-cache-dir=.thinlto-cache: unknown option`。
+- `peridot` 内核开启 BTF，但 runner 没有 `pahole`，报 `pahole (pahole) is not available`。
+- `garnet` 在 LTO 阶段收到 runner shutdown signal，按基础设施/瞬时失败处理，重跑验证。
+- `sweet/thor/thyme/tucana/umi/unicorn/ursa/vayu/vela/venus/vermeer/violet/zeus/zizhan` 这些 job API 无 steps，日志下载返回 `BlobNotFound`，按基础设施/无日志失败处理，重跑验证。
+
+已修 `scripts/build-lineage-recipe.sh`：
+
+- 安装依赖增加 `dwarves`，提供 `pahole`。
+- kernel `MAKE_ARGS` 显式加入 `LD=ld.lld`，避免旧内核误走 `ld.gold`。
+- 合并 fragment 前把 `$(PRODUCT_DEVICE)` 替换为当前 recipe 的 `build.device`。
+
+下一步只重跑 Xiaomi 失败子集，不重跑 30 个已成功设备。
+
 本次修改前备份：
 
 - `README.md.bak-20260530-225835`
@@ -205,3 +221,5 @@ Xiaomi 全量构建 run `26696815773` 当前观察到 `beryllium`、`alioth`、`
 - `README.md.bak-20260531-115331`
 - `SYNC-HANDOFF.md.bak-20260531-115331`
 - `SYNC-HANDOFF.md.bak-20260531-115625`
+- `scripts/build-lineage-recipe.sh.bak-20260531-135304`
+- `SYNC-HANDOFF.md.bak-20260531-135304`

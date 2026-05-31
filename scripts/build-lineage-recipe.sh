@@ -71,7 +71,7 @@ log "Install build dependencies"
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
   bc bison build-essential ca-certificates ccache curl file flex git jq \
-  dwarves libelf-dev libssl-dev lld llvm clang \
+  dwarves libelf-dev liblzma-dev libssl-dev lld llvm clang \
   gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
   python3 rsync unzip xz-utils
 

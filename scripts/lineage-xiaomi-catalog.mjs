@@ -13,6 +13,8 @@ const options = {
   recipeLayout: process.env.LINEAGE_RECIPE_LAYOUT || "flat",
   maxDevices: Number(process.env.LINEAGE_MAX_DEVICES || "0"),
   device: process.env.LINEAGE_DEVICE || "",
+  deviceDataFile: process.env.LINEAGE_DEVICE_DATA_FILE || "",
+  wikiDir: process.env.LINEAGE_WIKI_DIR || "",
   listVendors: process.env.LINEAGE_LIST_VENDORS === "1",
   includeUnofficial: process.env.LINEAGE_INCLUDE_UNOFFICIAL === "1",
 };
@@ -70,6 +72,10 @@ async function fetchText(url, raw = false) {
 
 async function fetchJson(url) {
   return (await fetchWithRetry(url, false)).json();
+}
+
+function isNotFound(error) {
+  return /^404\b/.test(String(error?.message || ""));
 }
 
 function stripQuote(value) {
@@ -194,16 +200,63 @@ function groupDevices(devices) {
 }
 
 async function listLineageWikiDeviceFiles() {
+  if (options.wikiDir) {
+    const deviceDir = path.join(options.wikiDir, "_data", "devices");
+    const entries = await fs.readdir(deviceDir, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".yml"))
+      .map((entry) => ({
+        name: entry.name,
+        local_path: path.join(deviceDir, entry.name),
+      }));
+  }
+
   const url = `${githubApi}/repos/${lineageWikiRepo}/contents/_data/devices?ref=main`;
   const entries = await fetchJson(url);
   return entries.filter((entry) => entry.name.endsWith(".yml"));
 }
 
 async function readWikiDevice(entry) {
+  if (entry.local_path) {
+    const text = await fs.readFile(entry.local_path, "utf8");
+    return { ...parseDeviceYaml(text), yaml_file: entry.name };
+  }
+
   const devicePath = entry.path || `_data/devices/${entry.name}`;
   const url = `${githubApi}/repos/${lineageWikiRepo}/contents/${devicePath}?ref=main`;
   const text = await fetchText(url, true);
   return { ...parseDeviceYaml(text), yaml_file: entry.name };
+}
+
+async function loadDeviceData() {
+  if (options.deviceDataFile) {
+    const text = await fs.readFile(options.deviceDataFile, "utf8");
+    const data = JSON.parse(text);
+    return Array.isArray(data) ? data : data.devices || [];
+  }
+
+  const entries = options.device
+    ? [
+        { name: `${options.device}.yml` },
+        ...Array.from({ length: 20 }, (_, index) => ({
+          name: `${options.device}_variant${index + 1}.yml`,
+        })),
+      ]
+    : await listLineageWikiDeviceFiles();
+  const devices = (
+    await mapLimit(entries, 8, async (entry) => {
+      try {
+        return await readWikiDevice(entry);
+      } catch (error) {
+        if (options.device && /404/.test(error.message)) return null;
+        throw error;
+      }
+    })
+  ).filter(Boolean);
+  if (options.device && devices.length === 0) {
+    throw new Error(`No LineageOS wiki device YAML found for ${options.device}`);
+  }
+  return devices;
 }
 
 async function mapLimit(items, limit, worker) {
@@ -257,7 +310,8 @@ async function branchExists(ownerRepo, ref) {
     await repoContents(ownerRepo, ref);
     branchCache.set(cacheKey, true);
     return true;
-  } catch {
+  } catch (error) {
+    if (!isNotFound(error)) throw error;
     branchCache.set(cacheKey, false);
     return false;
   }
@@ -350,8 +404,9 @@ async function collectBoardConfigs(ownerRepo, ref, file = "BoardConfig.mk", seen
   let text = "";
   try {
     text = await repoText(ownerRepo, ref, file);
-  } catch {
-    return [];
+  } catch (error) {
+    if (isNotFound(error)) return [];
+    throw error;
   }
 
   const included = [];
@@ -414,18 +469,26 @@ async function inspectDevice(device) {
   let kernelValidation = "not_checked";
   let boardFacts = { files: [], kernel_configs: [], kernel_source_path: "", kernel_image_name: "Image.gz-dtb" };
   if (lineageBranch && kernelRepo) {
-    const kernelContents = await repoContents(kernelRepo, lineageBranch).catch(() => []);
+    const kernelContents = await repoContents(kernelRepo, lineageBranch).catch((error) => {
+      if (isNotFound(error)) return [];
+      throw error;
+    });
     kernelValidation = Array.isArray(kernelContents) ? classifyKernelContents(kernelContents) : "api_error";
     if (kernelValidation !== "full_source") blocked.push(`Kernel repo validation is ${kernelValidation}.`);
     boardFacts = boardConfigFacts(await collectBoardConfigs(deviceRepo, lineageBranch));
     if (boardFacts.kernel_configs.length === 0) blocked.push("No TARGET_KERNEL_CONFIG found in LineageOS BoardConfig.");
   }
 
-  const download = await latestLineageBuild(device.codename).catch((error) => ({
-    api_url: `https://download.lineageos.org/api/v2/devices/${device.codename}/builds`,
-    latest: null,
-    error: error.message,
-  }));
+  const download = await latestLineageBuild(device.codename).catch((error) => {
+    if (isNotFound(error)) {
+      return {
+        api_url: `https://download.lineageos.org/api/v2/devices/${device.codename}/builds`,
+        latest: null,
+        error: error.message,
+      };
+    }
+    throw error;
+  });
   if (!download.latest?.url) blocked.push("No official LineageOS build found in download API.");
 
   const buildReady = blocked.length === 0;
@@ -518,27 +581,7 @@ async function main() {
   await fs.mkdir(options.outputDir, { recursive: true });
   await fs.mkdir(options.recipeDir, { recursive: true });
 
-  const entries = options.device
-    ? [
-        { name: `${options.device}.yml` },
-        ...Array.from({ length: 20 }, (_, index) => ({
-          name: `${options.device}_variant${index + 1}.yml`,
-        })),
-      ]
-    : await listLineageWikiDeviceFiles();
-  const allDevices = (
-    await mapLimit(entries, 8, async (entry) => {
-      try {
-        return await readWikiDevice(entry);
-      } catch (error) {
-        if (options.device && /404/.test(error.message)) return null;
-        throw error;
-      }
-    })
-  ).filter(Boolean);
-  if (options.device && allDevices.length === 0) {
-    throw new Error(`No LineageOS wiki device YAML found for ${options.device}`);
-  }
+  const allDevices = await loadDeviceData();
   const parsed = allDevices.filter((device) => {
     if (includeAllVendors) return true;
     const short = vendorShortOf(device);
@@ -564,6 +607,10 @@ async function main() {
     await writeJson(path.join(options.outputDir, `${options.outputPrefix}-vendors.json`), {
       metadata: catalogMetadata(),
       vendors,
+    });
+    await writeJson(path.join(options.outputDir, `${options.outputPrefix}-device-data.json`), {
+      metadata: catalogMetadata(),
+      devices: parsed,
     });
     console.log(`vendors=${vendors.length}`);
     console.log(vendors.map((item) => `${item.vendor_short} ${item.device_count}`).join("\n"));

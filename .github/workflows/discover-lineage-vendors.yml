@@ -36,9 +36,15 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Fetch LineageOS wiki device data
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/LineageOS/lineage_wiki "$RUNNER_TEMP/lineage_wiki"
+          git -C "$RUNNER_TEMP/lineage_wiki" sparse-checkout set _data/devices
+
       - name: List vendors
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          LINEAGE_WIKI_DIR: ${{ runner.temp }}/lineage_wiki
           LINEAGE_LIST_VENDORS: "1"
           LINEAGE_VENDOR_SHORTS: ${{ github.event.inputs.vendors || '*' }}
           LINEAGE_OUTPUT_PREFIX: lineage-vendors
@@ -60,6 +66,15 @@ jobs:
           console.log(vendors.join('\n'));
           NODE
 
+      - name: Upload device data artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lineage-vendors-device-data
+          path: |
+            catalog/lineage-vendors-vendors.json
+            catalog/lineage-vendors-device-data.json
+          if-no-files-found: error
+
   discover:
     needs: prepare
     if: needs.prepare.outputs.count != '0'
@@ -68,7 +83,7 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
     steps:
       - name: Checkout
@@ -79,9 +94,16 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Download device data
+        uses: actions/download-artifact@v4
+        with:
+          name: lineage-vendors-device-data
+          path: catalog
+
       - name: Discover ${{ matrix.vendor }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          LINEAGE_DEVICE_DATA_FILE: catalog/lineage-vendors-device-data.json
           LINEAGE_VENDOR_SHORTS: ${{ matrix.vendor }}
           LINEAGE_OUTPUT_PREFIX: lineage-vendor-${{ matrix.vendor }}
           LINEAGE_RECIPE_DIR: recipes/lineage-vendors

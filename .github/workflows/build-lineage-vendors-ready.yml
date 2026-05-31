@@ -123,7 +123,34 @@ jobs:
         with:
           go-version: "1.23"
 
+      - name: Add swap for LTO link
+        run: |
+          set -euo pipefail
+          SWAP_DIR=/mnt
+          if [ ! -d "$SWAP_DIR" ]; then
+            SWAP_DIR=/
+          fi
+          FREE_GB="$(df -BG --output=avail "$SWAP_DIR" | tail -n 1 | tr -dc '0-9')"
+          SWAP_GB=12
+          if [ "$FREE_GB" -lt 14 ]; then
+            SWAP_GB=$((FREE_GB - 2))
+          fi
+          if [ "$SWAP_GB" -lt 4 ]; then
+            echo "Not enough disk space to add useful swap on $SWAP_DIR"
+            df -h
+            exit 1
+          fi
+          SWAP_FILE="$SWAP_DIR/swapfile"
+          sudo fallocate -l "${SWAP_GB}G" "$SWAP_FILE" || sudo dd if=/dev/zero of="$SWAP_FILE" bs=1M count="$((SWAP_GB * 1024))"
+          sudo chmod 600 "$SWAP_FILE"
+          sudo mkswap "$SWAP_FILE"
+          sudo swapon "$SWAP_FILE"
+          free -h
+          df -h "$SWAP_DIR"
+
       - name: Build ${{ matrix.model }}
+        env:
+          JOBS: "1"
         run: |
           chmod +x scripts/build-lineage-recipe.sh
           scripts/build-lineage-recipe.sh "${{ matrix.recipe }}"

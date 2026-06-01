@@ -54,6 +54,36 @@ log() {
   printf '\n==> %s\n' "$*"
 }
 
+sanitize_appended_dtb_names() {
+  local config_file="$OUT_DIR/.config"
+  local line names cleaned=() item new_names
+
+  line="$(grep -E '^CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES=' "$config_file" || true)"
+  if [[ -z "$line" || "$line" != *".dtbo"* ]]; then
+    return
+  fi
+
+  names="${line#*=}"
+  names="${names%\"}"
+  names="${names#\"}"
+  read -r -a items <<< "$names"
+  for item in "${items[@]}"; do
+    if [[ "$item" == *".dtbo" ]]; then
+      echo "drop separated dtbo from appended dtb list: $item"
+      continue
+    fi
+    cleaned+=("$item")
+  done
+
+  if [[ "${#cleaned[@]}" -eq 0 ]]; then
+    echo "all appended dtb names were dtbo entries; refusing to guess a replacement" >&2
+    exit 1
+  fi
+
+  new_names="${cleaned[*]}"
+  sed -i "s#^CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES=.*#CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES=\"$new_names\"#" "$config_file"
+}
+
 extract_boot() {
   local ota_zip="$1"
   mkdir -p "$WORK_DIR/base" "$WORK_DIR/payload"
@@ -159,6 +189,8 @@ for config in "${FRAGMENT_CONFIGS[@]}"; do
 done
 FRAGMENTS+=("$ROOT_DIR/$FRAGMENT_PATH")
 "$SRC_DIR/scripts/kconfig/merge_config.sh" -m -O "$OUT_DIR" "$OUT_DIR/.config" "${FRAGMENTS[@]}"
+make "${MAKE_ARGS[@]}" olddefconfig
+sanitize_appended_dtb_names
 make "${MAKE_ARGS[@]}" olddefconfig
 
 log "Build kernel image"

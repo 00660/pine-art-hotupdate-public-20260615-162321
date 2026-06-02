@@ -2308,6 +2308,34 @@
       ]
     },
     {
+      "device": "audi",
+      "vendor_short": "oneplus",
+      "names": [
+        "Ace 3V"
+      ],
+      "reasons": [
+        "Kernel Kconfig mandatory source is missing: drivers/base/kernelFwUpdate/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/base/touchpanel_notify/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/aw8697_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/oplus_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig has 13 more missing mandatory source references."
+      ]
+    },
+    {
+      "device": "avalon",
+      "vendor_short": "oneplus",
+      "names": [
+        "Nord 4"
+      ],
+      "reasons": [
+        "Kernel Kconfig mandatory source is missing: drivers/base/kernelFwUpdate/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/base/touchpanel_notify/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/aw8697_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/oplus_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig has 13 more missing mandatory source references."
+      ]
+    },
+    {
       "device": "avicii",
       "vendor_short": "oneplus",
       "names": [
@@ -2350,6 +2378,77 @@
       ],
       "reasons": [
         "No official LineageOS build found in download API."
+      ]
+    },
+    {
+      "device": "caihong",
+      "vendor_short": "oneplus",
+      "names": [
+        "Pad Pro",
+        "Pad 2"
+      ],
+      "reasons": [
+        "Kernel Kconfig mandatory source is missing: drivers/base/kernelFwUpdate/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/base/touchpanel_notify/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/aw8697_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/oplus_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig has 13 more missing mandatory source references."
+      ]
+    },
+    {
+      "device": "corvette",
+      "vendor_short": "oneplus",
+      "names": [
+        "Ace 3 Pro"
+      ],
+      "reasons": [
+        "Kernel Kconfig mandatory source is missing: drivers/base/kernelFwUpdate/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/base/touchpanel_notify/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/aw8697_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/oplus_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig has 13 more missing mandatory source references."
+      ]
+    },
+    {
+      "device": "giulia",
+      "vendor_short": "oneplus",
+      "names": [
+        "13R"
+      ],
+      "reasons": [
+        "Kernel Kconfig mandatory source is missing: drivers/base/kernelFwUpdate/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/base/touchpanel_notify/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/aw8697_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/oplus_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig has 13 more missing mandatory source references."
+      ]
+    },
+    {
+      "device": "giuliac",
+      "vendor_short": "oneplus",
+      "names": [
+        "Ace 5"
+      ],
+      "reasons": [
+        "Kernel Kconfig mandatory source is missing: drivers/base/kernelFwUpdate/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/base/touchpanel_notify/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/aw8697_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/oplus_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig has 13 more missing mandatory source references."
+      ]
+    },
+    {
+      "device": "lexus",
+      "vendor_short": "oneplus",
+      "names": [
+        "Nord 5"
+      ],
+      "reasons": [
+        "Kernel Kconfig mandatory source is missing: drivers/base/kernelFwUpdate/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/base/touchpanel_notify/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/aw8697_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/oplus_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig has 13 more missing mandatory source references."
       ]
     },
     {
@@ -2397,6 +2496,20 @@
         "Kernel Kconfig mandatory source is missing: drivers/input/touchscreen/synaptics_hbp/Kconfig (referenced by drivers/input/touchscreen/Kconfig).",
         "Kernel Kconfig mandatory source is missing: drivers/input/touchscreen/touch_custom/Kconfig (referenced by drivers/input/touchscreen/Kconfig).",
         "Kernel Kconfig has 14 more missing mandatory source references."
+      ]
+    },
+    {
+      "device": "waffle",
+      "vendor_short": "oneplus",
+      "names": [
+        "12"
+      ],
+      "reasons": [
+        "Kernel Kconfig mandatory source is missing: drivers/base/kernelFwUpdate/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/base/touchpanel_notify/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/aw8697_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/oplus_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig has 13 more missing mandatory source references."
       ]
     },
     {
@@ -2503,6 +2616,20 @@
       ],
       "reasons": [
         "Device architecture is arm64-arm; only arm64 devices are built."
+      ]
+    },
+    {
+      "device": "bale",
+      "vendor_short": "realme",
+      "names": [
+        "GT Neo6"
+      ],
+      "reasons": [
+        "Kernel Kconfig mandatory source is missing: drivers/base/kernelFwUpdate/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/base/touchpanel_notify/Kconfig (referenced by drivers/base/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/aw8697_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig mandatory source is missing: drivers/misc/vibrator/oplus_haptic/Kconfig (referenced by drivers/misc/Kconfig).",
+        "Kernel Kconfig has 13 more missing mandatory source references."
       ]
     },
     {

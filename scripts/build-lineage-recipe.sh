@@ -14,6 +14,7 @@ OUT_DIR="${OUT_DIR:-$WORK_DIR/o}"
 BASE_BOOT="$WORK_DIR/base/boot.img"
 ARTIFACT_DIR="$ROOT_DIR/artifacts/lineage-recipe"
 JOBS="${JOBS:-$(nproc)}"
+RECIPE_FOR_ARTIFACT="$RECIPE"
 
 need() {
   local key="$1"
@@ -49,6 +50,10 @@ KERNEL_REF="$(need '.build.kernel_ref')"
 ARCH="$(jq -r '.build.arch // "arm64"' "$RECIPE")"
 IMAGE_TARGET="$(jq -r '.build.image_target // "Image.gz-dtb"' "$RECIPE")"
 FRAGMENT_PATH="$(jq -r '.build.fragment_path // "config/docker-required.fragment"' "$RECIPE")"
+RESOLVED_BOOT_DATE=""
+RESOLVED_BOOT_DATETIME=""
+RESOLVED_BOOT_FILENAME=""
+RESOLVED_BOOT_FILEPATH=""
 
 log() {
   printf '\n==> %s\n' "$*"
@@ -82,6 +87,75 @@ sanitize_appended_dtb_names() {
 
   new_names="${cleaned[*]}"
   sed -i "s#^CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES=.*#CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES=\"$new_names\"#" "$config_file"
+}
+
+refresh_boot_source_from_lineage_api() {
+  local api_url version builds_json latest
+
+  api_url="$(jq -r '.source_facts.download_api_url // empty' "$RECIPE")"
+  if [[ -z "$api_url" || "$api_url" == "null" ]]; then
+    api_url="https://download.lineageos.org/api/v2/devices/$DEVICE/builds"
+  fi
+  version="${KERNEL_REF#lineage-}"
+  builds_json="$WORK_DIR/lineage-builds.json"
+
+  if ! curl -L --fail --retry 5 --retry-delay 5 -o "$builds_json" "$api_url"; then
+    echo "cannot refresh LineageOS OTA URL from API; using recipe URL: $BOOT_SOURCE_URL"
+    return
+  fi
+
+  latest="$(jq -r --arg version "$version" '
+    [
+      .[]
+      | select((.version // "") == $version)
+      | .files[]?
+      | select((.filename // "") | test("^lineage-[0-9.]+-[0-9]{8}-nightly-.+-signed[.]zip$"))
+    ]
+    | sort_by(.datetime // 0)
+    | reverse
+    | .[0] // empty
+    | [
+        .url // "",
+        .sha256 // "",
+        .date // "",
+        ((.datetime // "") | tostring),
+        .filename // "",
+        .filepath // ""
+      ]
+    | @tsv
+  ' "$builds_json")"
+  if [[ -z "$latest" ]]; then
+    echo "LineageOS API has no matching $version signed zip for $DEVICE; using recipe URL: $BOOT_SOURCE_URL"
+    return
+  fi
+
+  IFS=$'\t' read -r BOOT_SOURCE_URL BOOT_SOURCE_SHA256 RESOLVED_BOOT_DATE RESOLVED_BOOT_DATETIME RESOLVED_BOOT_FILENAME RESOLVED_BOOT_FILEPATH <<< "$latest"
+  if [[ -z "$BOOT_SOURCE_URL" ]]; then
+    echo "LineageOS API returned an empty OTA URL for $DEVICE; using recipe URL"
+    BOOT_SOURCE_URL="$(need '.build.boot_source_url')"
+    BOOT_SOURCE_SHA256="$(jq -r '.build.boot_source_sha256 // empty' "$RECIPE")"
+    return
+  fi
+
+  RECIPE_FOR_ARTIFACT="$WORK_DIR/recipe-resolved.json"
+  jq \
+    --arg url "$BOOT_SOURCE_URL" \
+    --arg sha "$BOOT_SOURCE_SHA256" \
+    --arg date "$RESOLVED_BOOT_DATE" \
+    --arg datetime "$RESOLVED_BOOT_DATETIME" \
+    --arg filename "$RESOLVED_BOOT_FILENAME" \
+    --arg filepath "$RESOLVED_BOOT_FILEPATH" \
+    '
+      .build.boot_source_url = $url
+      | .build.boot_source_sha256 = $sha
+      | .source_facts.latest_official_build.url = $url
+      | .source_facts.latest_official_build.sha256 = $sha
+      | .source_facts.latest_official_build.date = $date
+      | .source_facts.latest_official_build.datetime = ($datetime | if . == "" then null else tonumber end)
+      | .source_facts.latest_official_build.filename = $filename
+      | .source_facts.latest_official_build.filepath = $filepath
+    ' "$RECIPE" > "$RECIPE_FOR_ARTIFACT"
+  echo "resolved LineageOS OTA URL: $BOOT_SOURCE_URL"
 }
 
 extract_boot() {
@@ -118,6 +192,9 @@ log "Install payload dumper"
 go install github.com/ssut/payload-dumper-go@latest
 
 mkdir -p "$WORK_DIR" "$OUT_DIR" "$ARTIFACT_DIR"
+
+log "Refresh official LineageOS OTA URL"
+refresh_boot_source_from_lineage_api
 
 log "Download official LineageOS OTA"
 OTA_ZIP="$WORK_DIR/lineage.zip"
@@ -211,7 +288,7 @@ chmod +x "$ROOT_DIR/scripts/repack-boot.sh"
 
 cp -f "$OUT_DIR/.config" "$ARTIFACT_DIR/config-docker-final"
 cp -f "$KERNEL_IMAGE" "$ARTIFACT_DIR/$IMAGE_TARGET"
-cp -f "$RECIPE" "$ARTIFACT_DIR/recipe.json"
+cp -f "$RECIPE_FOR_ARTIFACT" "$ARTIFACT_DIR/recipe.json"
 printf '%s\n' "$DEVICE" > "$ARTIFACT_DIR/device"
 printf '%s\n' "$KERNEL_REPO" > "$ARTIFACT_DIR/upstream-repo"
 printf '%s\n' "$KERNEL_REF" > "$ARTIFACT_DIR/upstream-ref"

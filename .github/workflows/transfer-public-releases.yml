@@ -1,0 +1,166 @@
+name: Transfer Public Releases
+
+on:
+  workflow_dispatch:
+    inputs:
+      public_repo:
+        description: Public source repository, owner/name
+        required: true
+        default: 00660/android-docker-boot-builder-public-run-20260531-1450
+      limit:
+        description: Max public releases to process, 0 means all
+        required: true
+        default: "0"
+      replace_mismatched:
+        description: Replace private assets whose size differs from public source
+        required: true
+        type: choice
+        options:
+          - "true"
+          - "false"
+        default: "true"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: transfer-public-releases
+  cancel-in-progress: false
+
+jobs:
+  transfer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 720
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PUBLIC_REPO: ${{ inputs.public_repo }}
+      PRIVATE_REPO: ${{ github.repository }}
+      LIMIT: ${{ inputs.limit }}
+      REPLACE_MISMATCHED: ${{ inputs.replace_mismatched }}
+    steps:
+      - name: Transfer release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          work="$RUNNER_TEMP/release-transfer"
+          mkdir -p "$work/assets"
+          summary_jsonl="$work/transfer-summary.jsonl"
+          mismatches_jsonl="$work/mismatches.jsonl"
+          : > "$summary_jsonl"
+          : > "$mismatches_jsonl"
+
+          echo "public=$PUBLIC_REPO private=$PRIVATE_REPO limit=$LIMIT replace_mismatched=$REPLACE_MISMATCHED"
+          gh api --paginate "/repos/$PUBLIC_REPO/releases?per_page=100" --jq '.[] | @base64' > "$work/public-releases.b64"
+          total_public=$(wc -l < "$work/public-releases.b64" | tr -d ' ')
+          echo "public_releases=$total_public"
+
+          processed=0
+          created=0
+          skipped=0
+          uploaded=0
+          replaced=0
+          mismatch=0
+
+          decode_json() {
+            printf '%s' "$1" | base64 -d
+          }
+
+          while IFS= read -r rel64; do
+            [ -n "$rel64" ] || continue
+            if [ "$LIMIT" != "0" ] && [ "$processed" -ge "$LIMIT" ]; then
+              break
+            fi
+
+            rel_json="$work/release.json"
+            decode_json "$rel64" > "$rel_json"
+            tag=$(jq -r '.tag_name' "$rel_json")
+            title=$(jq -r '.name // .tag_name' "$rel_json")
+            prerelease=$(jq -r '.prerelease // false' "$rel_json")
+            body_file="$work/body.md"
+            jq -r '.body // ""' "$rel_json" > "$body_file"
+            private_json="$work/private-release.json"
+
+            if ! gh api "/repos/$PRIVATE_REPO/releases/tags/$tag" > "$private_json" 2>/dev/null; then
+              args=(release create "$tag" --repo "$PRIVATE_REPO" --title "$title" --notes-file "$body_file")
+              if [ "$prerelease" = "true" ]; then
+                args+=(--prerelease)
+              fi
+              gh "${args[@]}"
+              created=$((created + 1))
+              gh api "/repos/$PRIVATE_REPO/releases/tags/$tag" > "$private_json"
+              echo "created tag=$tag"
+            else
+              gh release edit "$tag" --repo "$PRIVATE_REPO" --title "$title" --notes-file "$body_file" >/dev/null
+            fi
+
+            release_uploaded=0
+            while IFS= read -r asset64; do
+              [ -n "$asset64" ] || continue
+              asset_json="$work/asset.json"
+              decode_json "$asset64" > "$asset_json"
+              asset_name=$(jq -r '.name' "$asset_json")
+              asset_size=$(jq -r '.size' "$asset_json")
+              asset_url=$(jq -r '.browser_download_url' "$asset_json")
+              existing_size=$(jq -r --arg name "$asset_name" '.assets[]? | select(.name == $name) | .size' "$private_json" | head -n 1)
+
+              if [ -n "$existing_size" ] && [ "$existing_size" = "$asset_size" ]; then
+                skipped=$((skipped + 1))
+                continue
+              fi
+
+              clobber_arg=()
+              if [ -n "$existing_size" ] && [ "$existing_size" != "$asset_size" ]; then
+                if [ "$REPLACE_MISMATCHED" != "true" ]; then
+                  jq -n --arg tag "$tag" --arg asset "$asset_name" --arg public_size "$asset_size" --arg private_size "$existing_size" \
+                    '{tag:$tag, asset:$asset, public_size:($public_size|tonumber), private_size:($private_size|tonumber)}' >> "$mismatches_jsonl"
+                  mismatch=$((mismatch + 1))
+                  continue
+                fi
+                clobber_arg=(--clobber)
+                replaced=$((replaced + 1))
+              fi
+
+              asset_dir="$work/assets/$tag"
+              mkdir -p "$asset_dir"
+              asset_path="$asset_dir/$asset_name"
+              echo "download tag=$tag asset=$asset_name size=$asset_size"
+              curl -fL --retry 6 --retry-all-errors --connect-timeout 30 --max-time 1800 -o "$asset_path" "$asset_url"
+              actual_size=$(stat -c '%s' "$asset_path")
+              if [ "$actual_size" != "$asset_size" ]; then
+                echo "size mismatch after download tag=$tag asset=$asset_name got=$actual_size want=$asset_size" >&2
+                exit 1
+              fi
+
+              echo "upload tag=$tag asset=$asset_name"
+              gh release upload "$tag" "$asset_path" --repo "$PRIVATE_REPO" "${clobber_arg[@]}"
+              rm -f "$asset_path"
+              uploaded=$((uploaded + 1))
+              release_uploaded=$((release_uploaded + 1))
+            done < <(jq -r '.assets[] | @base64' "$rel_json")
+
+            processed=$((processed + 1))
+            jq -n --arg tag "$tag" --argjson uploaded "$release_uploaded" '{tag:$tag, uploaded_assets:$uploaded}' >> "$summary_jsonl"
+            echo "release_done processed=$processed/$total_public tag=$tag uploaded_assets=$release_uploaded total_uploaded=$uploaded skipped=$skipped"
+          done < "$work/public-releases.b64"
+
+          {
+            echo "processed=$processed"
+            echo "created=$created"
+            echo "uploaded=$uploaded"
+            echo "replaced=$replaced"
+            echo "skipped=$skipped"
+            echo "mismatches=$mismatch"
+          } | tee "$work/final-summary.txt"
+
+          cat "$work/final-summary.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload transfer report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transfer-public-releases-report
+          path: |
+            ${{ runner.temp }}/release-transfer/*.jsonl
+            ${{ runner.temp }}/release-transfer/*.txt
+          if-no-files-found: ignore

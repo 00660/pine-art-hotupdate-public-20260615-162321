@@ -139,7 +139,7 @@ jobs:
           BUILD_TARGETS: ${{ inputs.build_targets }}
           BUILD_JOBS: ${{ inputs.build_jobs }}
         run: |
-          set -euo pipefail
+          set -eo pipefail
           LUNCH_TARGET="${LUNCH_TARGET:-mainline_modules_arm64-userdebug}"
           BUILD_TARGETS="${BUILD_TARGETS:-com.android.art}"
           BUILD_JOBS="${BUILD_JOBS:-4}"

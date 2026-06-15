@@ -1,16 +1,16 @@
-name: Build pine PixelExtended ART hot update
+name: Build pine Android 12 ART hot update
 
 on:
   workflow_dispatch:
     inputs:
       manifest_url:
-        description: PixelExtended manifest URL.
+        description: Android manifest URL for ART hot update build.
         required: false
-        default: https://github.com/PixelExtended/manifest
+        default: https://android.googlesource.com/platform/manifest
       manifest_branch:
-        description: PixelExtended manifest branch matching pine Android 12 ROM.
+        description: Android manifest branch/tag matching pine Android 12 ART.
         required: false
-        default: snow
+        default: android-12.0.0_r32
       lunch_target:
         description: Lunch target used for ART module build.
         required: false
@@ -76,15 +76,15 @@ jobs:
           repo version
           ccache --max-size=10G
 
-      - name: Sync PixelExtended ROM tree
+      - name: Sync Android 12 ART build tree
         env:
           MANIFEST_URL: ${{ inputs.manifest_url }}
           MANIFEST_BRANCH: ${{ inputs.manifest_branch }}
           SYNC_JOBS: ${{ inputs.sync_jobs }}
         run: |
           set -euo pipefail
-          MANIFEST_URL="${MANIFEST_URL:-https://github.com/PixelExtended/manifest}"
-          MANIFEST_BRANCH="${MANIFEST_BRANCH:-snow}"
+          MANIFEST_URL="${MANIFEST_URL:-https://android.googlesource.com/platform/manifest}"
+          MANIFEST_BRANCH="${MANIFEST_BRANCH:-android-12.0.0_r32}"
           SYNC_JOBS="${SYNC_JOBS:-4}"
           mkdir -p android
           cd android
@@ -147,7 +147,7 @@ jobs:
           {
             echo "# pine ART hot update"
             echo
-            echo "ROM baseline: PixelExtended pine Android 12 / snow"
+            echo "ROM baseline: pine Android 12 ART tag android-12.0.0_r32"
             echo "Patch: RegisterDexFile DEX dump hook"
             echo
             echo "Generated files:"

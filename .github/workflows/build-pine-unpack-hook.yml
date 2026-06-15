@@ -91,7 +91,6 @@ jobs:
           CONFIG=devices/pine/artifacts/config-docker-final
           grep -E '^(CONFIG_|# CONFIG_)(BPF_JIT|KPROBES|KPROBE_EVENTS|KPROBE_EVENT|UPROBES|UPROBE_EVENTS|UPROBE_EVENT|PERF_EVENTS|TRACEPOINTS|FTRACE|TRACEFS_FS|DEBUG_FS)' "$CONFIG" || true
           grep -q '^CONFIG_KPROBES=y$' "$CONFIG"
-          grep -q '^CONFIG_UPROBES=y$' "$CONFIG"
           grep -q '^CONFIG_BPF_SYSCALL=y$' "$CONFIG"
           grep -q '^CONFIG_BPF_JIT=y$' "$CONFIG"
           grep -q '^CONFIG_PERF_EVENTS=y$' "$CONFIG"
@@ -99,7 +98,7 @@ jobs:
           grep -q '^# CONFIG_FHANDLE is not set$' "$CONFIG"
           grep -q '^# CONFIG_USER_NS is not set$' "$CONFIG"
           grep -Eq '^CONFIG_(KPROBE_EVENTS|KPROBE_EVENT)=y$' "$CONFIG" || echo "::warning::Kprobe event config not enabled by this 4.9 tree"
-          grep -Eq '^CONFIG_(UPROBE_EVENTS|UPROBE_EVENT)=y$' "$CONFIG" || echo "::warning::Uprobe event config not enabled by this 4.9 tree"
+          grep -Eq '^CONFIG_(UPROBES|UPROBE_EVENTS|UPROBE_EVENT)=y$' "$CONFIG" || echo "::warning::Uprobe support not enabled by this 4.9 tree; ROM ART patch remains primary"
 
       - name: Package internal panel
         run: |

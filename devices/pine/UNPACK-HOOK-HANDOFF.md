@@ -59,6 +59,8 @@ CONFIG_RING_BUFFER=y
 
 Linux 4.9 没有新版 BPF ringbuf map，所以不能直接照搬 Android 13-17 的 ringbuf eBPF DEX dumper。pine 当前主线必须是 ROM/ART 侧 hook backend，内核 hook 只作为辅助观测能力。
 
+2026-06-15 公开 Actions run `27521473658` 已确认：内核编译和 boot repack 成功，`boot-pine-unpack-hook.img` SHA256 为 `797a2aaa39bddb50ad6f7772b3f0755d25f16d5385604574947667d227b82874`；失败点只是 workflow 过度要求 `CONFIG_UPROBES=y`。该 4.9 tree 最终配置保留 `CONFIG_KPROBES=y`、`CONFIG_KPROBE_EVENT=y`、`CONFIG_BPF_JIT=y`、`CONFIG_PERF_EVENTS=y`、`CONFIG_TRACEPOINTS=y`，但 `# CONFIG_UPROBES is not set`。后续校验已把 UPROBES 改成 warning。
+
 ## ART 源码补丁
 
 已落地的正式补丁：
@@ -235,7 +237,7 @@ ROM ART patch 验证重点：
 
 ```sh
 adb -s 192.168.2.103:5555 shell /debug_ramdisk/su -c 'getprop debug.pine.art_dexdump; getprop debug.pine.art_dexdump_pkg'
-adb -s 192.168.2.103:5555 shell /debug_ramdisk/su -c 'find /data/user/0/<package>/cache/pine-art-dumps -type f -maxdepth 1 -print 2>/dev/null'
+adb -s 192.168.2.103:5555 shell /debug_ramdisk/su -c 'find /data/user/0/<package>/cache/pine-art-dumps -maxdepth 1 -type f -print 2>/dev/null'
 ```
 
 ## 备份
@@ -246,4 +248,5 @@ adb -s 192.168.2.103:5555 shell /debug_ramdisk/su -c 'find /data/user/0/<package
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-unpack-20260614-201404
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-rom-20260615-090544
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-rom-20260615-092620
+C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-boot-validate-20260615-113507
 ```

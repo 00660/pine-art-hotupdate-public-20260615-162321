@@ -113,14 +113,14 @@ Expected key values:
 
 ```text
 CONFIG_KPROBES=y
-CONFIG_KPROBE_EVENTS=y
-CONFIG_UPROBES=y
-CONFIG_UPROBE_EVENTS=y
+CONFIG_KPROBE_EVENT=y
 CONFIG_BPF_SYSCALL=y
 CONFIG_BPF_JIT=y
 CONFIG_PERF_EVENTS=y
 CONFIG_TRACEPOINTS=y
 ```
+
+`CONFIG_UPROBES` and `CONFIG_UPROBE_EVENTS` are requested by the fragment but are not hard requirements for this 4.9 tree. The current primary dump path is the ROM ART patch.
 
 ## Output
 

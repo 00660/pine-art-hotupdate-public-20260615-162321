@@ -1,0 +1,51 @@
+name: Build pine ART dexdump backend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-pine-art-dexdump.yml
+      - devices/pine/unpack-system/device/pine-art-dexdump.c
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-pine-art-dexdump:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Locate Android NDK
+        run: |
+          set -euo pipefail
+          if [ -n "${ANDROID_NDK_HOME:-}" ] && [ -x "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android23-clang" ]; then
+            echo "NDK=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          NDK="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/ndk" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -n 1)"
+          echo "NDK=$NDK" >> "$GITHUB_ENV"
+
+      - name: Build arm64 backend
+        run: |
+          set -euo pipefail
+          mkdir -p devices/pine/artifacts
+          CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android23-clang"
+          "$CC" -O2 -Wall -Wextra -fPIE -pie \
+            devices/pine/unpack-system/device/pine-art-dexdump.c \
+            -o devices/pine/artifacts/pine-art-dexdump
+          file devices/pine/artifacts/pine-art-dexdump
+          sha256sum devices/pine/artifacts/pine-art-dexdump > devices/pine/artifacts/pine-art-dexdump.sha256
+
+      - name: Upload backend
+        uses: actions/upload-artifact@v4
+        with:
+          name: pine-art-dexdump-arm64
+          retention-days: 1
+          path: |
+            devices/pine/artifacts/pine-art-dexdump
+            devices/pine/artifacts/pine-art-dexdump.sha256
+          if-no-files-found: error

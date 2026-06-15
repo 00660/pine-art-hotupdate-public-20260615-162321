@@ -132,6 +132,33 @@ C:\Users\16547\Desktop\android-docker-boot-builder-github-work\artifacts\pine-ar
 59981a99e42dd882b531a9e93895212246c027ae374fca70f3c3e02c9930097f
 ```
 
+2026-06-15 已新增 ART 热更新构建入口：
+
+```text
+.github/workflows/build-pine-art-rom.yml
+devices/pine/scripts/install-pine-art-hotupdate.ps1
+```
+
+该 workflow 使用 `PixelExtended/manifest@snow` 同步 ROM 树，给最终 `art` 仓库应用 `RegisterDexFile` dump patch，默认构建 `mainline_modules_arm64-userdebug` 的 `com.android.art`，输出 artifact：
+
+```text
+pine-art-hotupdate
+```
+
+本地热更新入口：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File devices/pine/scripts/install-pine-art-hotupdate.ps1 -ApexPath <com.android.art.apex>
+```
+
+脚本先把 APEX 推到：
+
+```text
+/sdcard/pine-art-hotupdate/
+```
+
+然后优先尝试 `adb install --staged --apex`。如果 ROM 签名不接受 staged APEX，且 root shell 可用，则备份 `/system/apex/com.android.art.apex` 到 `/data/local/tmp/pine-art-hotupdate-backup-<timestamp>` 后尝试替换式热更新。替换后必须重启才会让 ART APEX 生效。
+
 ## xiaojianbang stealth hook 结论
 
 用户给出的参考项目：
@@ -284,4 +311,5 @@ C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-rom-20260615-092620
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-boot-validate-20260615-113507
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-final-artifacts-20260615-115854
+C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-rom-art-build-20260615-154314
 ```

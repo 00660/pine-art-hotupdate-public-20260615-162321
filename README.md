@@ -114,6 +114,18 @@ workflow：`.github/workflows/build-boot.yml`
 - `devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch`
 - `devices/pine/scripts/apply-pine-art-patch.sh`
 - `.github/workflows/verify-pine-art-rom-patch.yml`
+- `.github/workflows/build-pine-art-rom.yml`
+- `devices/pine/scripts/install-pine-art-hotupdate.ps1`
 - `devices/pine/UNPACK-HOOK-HANDOFF.md`
 
 patch 落点是 `art/runtime/class_linker.cc` 的 `ClassLinker::RegisterDexFile`。面板安装 APK 后先设置 `debug.pine.art_dexdump=1` 和 `debug.pine.art_dexdump_pkg=<package>`，再启动目标应用；patched ART 将 DEX 写到 `/data/user/0/<package>/cache/pine-art-dumps/`，设备 wrapper 负责复制到任务输出包。
+
+ART 热更新构建入口：
+
+- workflow：`.github/workflows/build-pine-art-rom.yml`
+- 默认 manifest：`https://github.com/PixelExtended/manifest -b snow`
+- 默认 lunch：`mainline_modules_arm64-userdebug`
+- 默认目标：`com.android.art`
+- 输出 artifact：`pine-art-hotupdate`
+
+下载 artifact 后可用 `devices/pine/scripts/install-pine-art-hotupdate.ps1 -ApexPath <com.android.art.apex>` 推送到 103 并尝试 staged APEX 安装；若签名不匹配，脚本会在 root 可用时尝试 `/system/apex/com.android.art.apex` 替换式热更新并保留设备侧备份。

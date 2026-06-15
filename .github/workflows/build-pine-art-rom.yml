@@ -88,8 +88,8 @@ jobs:
           SYNC_JOBS="${SYNC_JOBS:-4}"
           mkdir -p android
           cd android
-          repo init -u "$MANIFEST_URL" -b "$MANIFEST_BRANCH" --depth=1 --partial-clone --clone-filter=blob:none
-          repo sync -c --no-tags --no-clone-bundle --optimized-fetch --prune --partial-clone --clone-filter=blob:none -j"$SYNC_JOBS"
+          repo init -u "$MANIFEST_URL" -b "$MANIFEST_BRANCH" --depth=1
+          repo sync -c --no-tags --no-clone-bundle --optimized-fetch --prune -j"$SYNC_JOBS"
           repo manifest -r > ../pine-art-rom-resolved-manifest.xml
           git -C art rev-parse HEAD > ../pine-art-revision.txt
 

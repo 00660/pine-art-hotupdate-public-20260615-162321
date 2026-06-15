@@ -106,12 +106,18 @@ jobs:
           SYNC_JOBS: ${{ inputs.sync_jobs }}
         run: |
           set -euo pipefail
-          MANIFEST_URL="${MANIFEST_URL:-https://github.com/PixelExtended/manifest}"
-          MANIFEST_BRANCH="${MANIFEST_BRANCH:-snow}"
+          PEX_MANIFEST_URL="${MANIFEST_URL:-https://github.com/PixelExtended/manifest}"
+          PEX_MANIFEST_BRANCH="${MANIFEST_BRANCH:-snow}"
+          AOSP_MANIFEST_URL="https://android.googlesource.com/platform/manifest"
+          AOSP_MANIFEST_BRANCH="android-12.1.0_r22"
           SYNC_JOBS="${SYNC_JOBS:-4}"
+          git clone --depth=1 --branch "$PEX_MANIFEST_BRANCH" "$PEX_MANIFEST_URL" pine-pixelextended-manifest
+          cp pine-pixelextended-manifest/default.xml pine-pixelextended-default.xml
+          cp -r pine-pixelextended-manifest/snippets pine-pixelextended-snippets
+          grep -n 'android-12.1.0_r22' pine-pixelextended-default.xml
           mkdir -p android
           cd android
-          repo init -u "$MANIFEST_URL" -b "$MANIFEST_BRANCH" --depth=1
+          repo init -u "$AOSP_MANIFEST_URL" -b "$AOSP_MANIFEST_BRANCH" --depth=1
           repo sync -c --no-tags --no-clone-bundle --optimized-fetch --prune -j"$SYNC_JOBS"
           repo manifest -r > ../pine-art-rom-resolved-manifest.xml
           git -C art rev-parse HEAD > ../pine-art-revision.txt
@@ -155,6 +161,8 @@ jobs:
           cp pine-art-build.env artifacts/pine-art-hotupdate/
           cp pine-art-revision.txt artifacts/pine-art-hotupdate/
           cp pine-art-rom-resolved-manifest.xml artifacts/pine-art-hotupdate/
+          cp pine-pixelextended-default.xml artifacts/pine-art-hotupdate/
+          tar -czf artifacts/pine-art-hotupdate/pine-pixelextended-snippets.tar.gz pine-pixelextended-snippets
           cp pine-art-rom-applied.diff artifacts/pine-art-hotupdate/
           mapfile -t apex_files < <(find android/out -type f \( -name 'com.android.art*.apex' -o -name 'com.android.runtime*.apex' \) | sort)
           if [ "${#apex_files[@]}" -eq 0 ]; then
@@ -170,8 +178,9 @@ jobs:
           {
             echo "# pine ART hot update"
             echo
-            echo "ROM baseline: PixelExtended pine V4.2, manifest PixelExtended/manifest@snow"
-            echo "Patch compatibility reference: ART android-12.0.0_r32"
+            echo "ROM baseline evidence: PixelExtended pine V4.2, manifest PixelExtended/manifest@snow"
+            echo "Materialized build tree: AOSP android-12.1.0_r22, the default tag declared by PixelExtended/manifest@snow"
+            echo "Patch compatibility reference: ART android-12.0.0_r32; locally verified against android-12.1.0_r22"
             echo "Patch: RegisterDexFile DEX dump hook"
             echo
             echo "Generated files:"

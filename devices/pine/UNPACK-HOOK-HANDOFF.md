@@ -36,7 +36,7 @@ C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.external\art-and
 
 该 checkout 为 `platform/art@android-12.0.0_r32`，当前 commit `00c84f21871a8df8c4acfd9469be80095f6c6a7d`。
 
-2026-06-15 接驳修正：旧 workflow 曾默认使用 `android.googlesource.com/platform/manifest@android-12.0.0_r32` 构建热更新，这只能验证 ART patch 兼容性，不能作为 103 当前 ROM 的最终源码基线。后续 ROM/ART 热更新必须以 XDA V4.2 指向的 `PixelExtended/manifest@snow` 为默认来源。
+2026-06-15 接驳修正：旧 workflow 曾默认使用 `android.googlesource.com/platform/manifest@android-12.0.0_r32` 构建热更新，这只能验证 ART patch 兼容性，不能作为 103 当前 ROM 的最终源码基线。后续 ROM/ART 热更新必须以 XDA V4.2 指向的 `PixelExtended/manifest@snow` 为证据来源。
 
 XDA V4.2 证据：
 
@@ -47,6 +47,15 @@ Device Source code: https://github.com/PixelExtended-Devices
 Kernel Source code: https://github.com/hsx02/kernel_xiaomi_sdm439
 Source code: https://github.com/PixelExtended
 ```
+
+2026-06-16 构建修正：直接 `repo sync PixelExtended/manifest@snow` 会失败，因为当前公开 manifest 中部分 overlay 已断链：
+
+```text
+PixelExtended/build: missing refs/heads/snow
+gitlab.pixelexperience.org/android/external_faceunlock: DNS unavailable
+```
+
+因此 ART 热更新 workflow 现在先拉取并归档 `PixelExtended/manifest@snow`，确认其默认 AOSP tag 为 `android-12.1.0_r22`，再用该 tag materialize AOSP build tree 来构建 `com.android.art`。`RegisterDexFile` patch 已本地验证可干净应用到 `platform/art@android-12.1.0_r22`。
 
 ## 关键判断
 
@@ -151,13 +160,13 @@ C:\Users\16547\Desktop\android-docker-boot-builder-github-work\artifacts\pine-ar
 devices/pine/scripts/install-pine-art-hotupdate.ps1
 ```
 
-该 workflow 使用 `PixelExtended/manifest@snow` 同步 ROM 树，给最终 `art` 仓库应用 `RegisterDexFile` dump patch，默认构建 `mainline_modules_arm64-userdebug` 的 `com.android.art`，输出 artifact：
+该 workflow 使用 `PixelExtended/manifest@snow` 作为 ROM 基线证据，实际同步该 manifest 声明的 `android-12.1.0_r22` AOSP build tree，给最终 `art` 仓库应用 `RegisterDexFile` dump patch，默认构建 `mainline_modules_arm64-userdebug` 的 `com.android.art`，输出 artifact：
 
 ```text
 pine-art-hotupdate
 ```
 
-接驳后的 workflow 已加防呆检查：默认 `manifest_url=https://github.com/PixelExtended/manifest`、`manifest_branch=snow`，如果传入 AOSP manifest 或其它分支会 fail-fast，避免再次产出与当前 pine ROM 不匹配的热更新。
+接驳后的 workflow 已加防呆检查：默认 `manifest_url=https://github.com/PixelExtended/manifest`、`manifest_branch=snow`，如果传入其它 manifest 或分支会 fail-fast。artifact 内会保留 `pine-pixelextended-default.xml` 和 `pine-pixelextended-snippets.tar.gz`，用于交叉核对 ROM 基线来源。
 
 本地热更新入口：
 
@@ -328,4 +337,5 @@ C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-boo
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-final-artifacts-20260615-115854
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-rom-art-build-20260615-154314
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-xda-baseline-20260615-234706
+C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-r22-workflow-20260616-000937
 ```

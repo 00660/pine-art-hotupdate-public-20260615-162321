@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 360
     env:
       USE_CCACHE: 1
-      CCACHE_DIR: /mnt/ccache
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_EXEC: /usr/bin/ccache
     steps:
       - name: Checkout patch repo

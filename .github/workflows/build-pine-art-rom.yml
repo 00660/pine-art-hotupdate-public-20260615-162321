@@ -1,6 +1,9 @@
 name: Build pine PixelExtended ART hot update
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       manifest_url:

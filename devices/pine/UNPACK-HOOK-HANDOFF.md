@@ -19,7 +19,7 @@
 
 - ROM：`PixelExtended_pine-12.0-20220227-0902-OFFICIAL`
 - ROM 源码基线：`PixelExtended/manifest@snow`
-- AOSP/ART 基线：`android-12.0.0_r32`
+- ART 补丁兼容参考：`android-12.0.0_r32`
 - Build ID：`SQ1D.220205.004`
 - Security patch：`2022-02-05`
 - Android：12 / SDK 31
@@ -35,6 +35,18 @@ C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.external\art-and
 ```
 
 该 checkout 为 `platform/art@android-12.0.0_r32`，当前 commit `00c84f21871a8df8c4acfd9469be80095f6c6a7d`。
+
+2026-06-15 接驳修正：旧 workflow 曾默认使用 `android.googlesource.com/platform/manifest@android-12.0.0_r32` 构建热更新，这只能验证 ART patch 兼容性，不能作为 103 当前 ROM 的最终源码基线。后续 ROM/ART 热更新必须以 XDA V4.2 指向的 `PixelExtended/manifest@snow` 为默认来源。
+
+XDA V4.2 证据：
+
+```text
+Thread: [CLOSED] 64bit - 12S - Official PixelExtended V4.2 Rom Update for Redmi 7A[pine] - 27/02/22
+ROM: PixelExtended_pine-12.0-20220227-0902-OFFICIAL
+Device Source code: https://github.com/PixelExtended-Devices
+Kernel Source code: https://github.com/hsx02/kernel_xiaomi_sdm439
+Source code: https://github.com/PixelExtended
+```
 
 ## 关键判断
 
@@ -145,6 +157,8 @@ devices/pine/scripts/install-pine-art-hotupdate.ps1
 pine-art-hotupdate
 ```
 
+接驳后的 workflow 已加防呆检查：默认 `manifest_url=https://github.com/PixelExtended/manifest`、`manifest_branch=snow`，如果传入 AOSP manifest 或其它分支会 fail-fast，避免再次产出与当前 pine ROM 不匹配的热更新。
+
 本地热更新入口：
 
 ```powershell
@@ -190,6 +204,7 @@ APatch
 - `devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch`
 - `devices/pine/scripts/apply-pine-art-patch.sh`
 - `devices/pine/scripts/build-pine-unpack-kernel.sh`
+- `devices/pine/scripts/install-pine-art-hotupdate.ps1`
 - `devices/pine/unpack-system/device/pine-run-dumper.sh`
 - `devices/pine/unpack-system/panel/server.js`
 - `devices/pine/unpack-system/panel/package.json`
@@ -312,4 +327,5 @@ C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-boot-validate-20260615-113507
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-final-artifacts-20260615-115854
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-rom-art-build-20260615-154314
+C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-xda-baseline-20260615-234706
 ```

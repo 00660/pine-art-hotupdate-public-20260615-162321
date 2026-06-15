@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       manifest_url:
-        description: Android manifest URL for ART hot update build.
+        description: PixelExtended ROM manifest URL matching the pine XDA V4.2 baseline.
         required: false
-        default: https://android.googlesource.com/platform/manifest
+        default: https://github.com/PixelExtended/manifest
       manifest_branch:
-        description: Android manifest branch/tag matching pine Android 12 ART.
+        description: PixelExtended ROM manifest branch matching Android 12 snow.
         required: false
-        default: android-12.0.0_r32
+        default: snow
       lunch_target:
         description: Lunch target used for ART module build.
         required: false
@@ -76,6 +76,29 @@ jobs:
           repo version
           ccache --max-size=10G
 
+      - name: Validate pine XDA ROM baseline
+        env:
+          MANIFEST_URL: ${{ inputs.manifest_url }}
+          MANIFEST_BRANCH: ${{ inputs.manifest_branch }}
+        run: |
+          set -euo pipefail
+          MANIFEST_URL="${MANIFEST_URL:-https://github.com/PixelExtended/manifest}"
+          MANIFEST_BRANCH="${MANIFEST_BRANCH:-snow}"
+          case "$MANIFEST_URL" in
+            https://github.com/PixelExtended/manifest|https://github.com/PixelExtended/manifest.git) ;;
+            *)
+              echo "This workflow is pinned to the XDA PixelExtended V4.2 pine ROM baseline." >&2
+              echo "Expected manifest_url=https://github.com/PixelExtended/manifest and manifest_branch=snow." >&2
+              echo "Refusing non-PixelExtended manifest: $MANIFEST_URL" >&2
+              exit 2
+              ;;
+          esac
+          if [ "$MANIFEST_BRANCH" != "snow" ]; then
+            echo "This workflow is pinned to PixelExtended snow for pine Android 12." >&2
+            echo "Refusing manifest_branch=$MANIFEST_BRANCH" >&2
+            exit 2
+          fi
+
       - name: Sync Android 12 ART build tree
         env:
           MANIFEST_URL: ${{ inputs.manifest_url }}
@@ -83,8 +106,8 @@ jobs:
           SYNC_JOBS: ${{ inputs.sync_jobs }}
         run: |
           set -euo pipefail
-          MANIFEST_URL="${MANIFEST_URL:-https://android.googlesource.com/platform/manifest}"
-          MANIFEST_BRANCH="${MANIFEST_BRANCH:-android-12.0.0_r32}"
+          MANIFEST_URL="${MANIFEST_URL:-https://github.com/PixelExtended/manifest}"
+          MANIFEST_BRANCH="${MANIFEST_BRANCH:-snow}"
           SYNC_JOBS="${SYNC_JOBS:-4}"
           mkdir -p android
           cd android
@@ -147,7 +170,8 @@ jobs:
           {
             echo "# pine ART hot update"
             echo
-            echo "ROM baseline: pine Android 12 ART tag android-12.0.0_r32"
+            echo "ROM baseline: PixelExtended pine V4.2, manifest PixelExtended/manifest@snow"
+            echo "Patch compatibility reference: ART android-12.0.0_r32"
             echo "Patch: RegisterDexFile DEX dump hook"
             echo
             echo "Generated files:"

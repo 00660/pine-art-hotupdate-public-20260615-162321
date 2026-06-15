@@ -1,0 +1,158 @@
+name: Build pine PixelExtended ART hot update
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_url:
+        description: PixelExtended manifest URL.
+        required: false
+        default: https://github.com/PixelExtended/manifest
+      manifest_branch:
+        description: PixelExtended manifest branch matching pine Android 12 ROM.
+        required: false
+        default: snow
+      lunch_target:
+        description: Lunch target used for ART module build.
+        required: false
+        default: mainline_modules_arm64-userdebug
+      build_targets:
+        description: Space-separated Soong targets to build.
+        required: false
+        default: com.android.art
+      sync_jobs:
+        description: repo sync jobs.
+        required: false
+        default: "4"
+      build_jobs:
+        description: build jobs.
+        required: false
+        default: "4"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pine-art-rom-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-pine-art-rom:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    env:
+      USE_CCACHE: 1
+      CCACHE_DIR: /mnt/ccache
+      CCACHE_EXEC: /usr/bin/ccache
+    steps:
+      - name: Checkout patch repo
+        uses: actions/checkout@v4
+
+      - name: Free runner disk
+        run: |
+          set -euo pipefail
+          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache || true
+          sudo apt-get clean
+          df -h
+
+      - name: Install Android build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential ccache curl flex g++-multilib gcc-multilib \
+            git git-lfs gnupg gperf lib32ncurses5-dev lib32readline-dev lib32z1-dev \
+            libelf-dev libgl1-mesa-dev liblz4-tool libncurses5 libncurses5-dev \
+            libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush \
+            python-is-python3 python3 python3-pip rsync schedtool squashfs-tools \
+            unzip xsltproc zip zlib1g-dev
+          sudo install -d -m 0755 /usr/local/bin
+          curl -L --fail --retry 5 \
+            https://storage.googleapis.com/git-repo-downloads/repo \
+            -o /tmp/repo
+          sudo install -m 0755 /tmp/repo /usr/local/bin/repo
+          repo version
+          ccache --max-size=10G
+
+      - name: Sync PixelExtended ROM tree
+        env:
+          MANIFEST_URL: ${{ inputs.manifest_url }}
+          MANIFEST_BRANCH: ${{ inputs.manifest_branch }}
+          SYNC_JOBS: ${{ inputs.sync_jobs }}
+        run: |
+          set -euo pipefail
+          mkdir -p android
+          cd android
+          repo init -u "$MANIFEST_URL" -b "$MANIFEST_BRANCH" --depth=1
+          repo sync -c --no-tags --no-clone-bundle --optimized-fetch --prune -j"$SYNC_JOBS"
+          repo manifest -r > ../pine-art-rom-resolved-manifest.xml
+          git -C art rev-parse HEAD > ../pine-art-revision.txt
+
+      - name: Apply pine ART RegisterDexFile patch
+        run: |
+          set -euo pipefail
+          PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch"
+          git -C android/art apply --check "$PATCH"
+          git -C android/art apply "$PATCH"
+          git -C android/art diff --check
+          grep -n "PineMaybeDumpRegisteredDexFile" android/art/runtime/class_linker.cc
+          grep -n "debug.pine.art_dexdump" android/art/runtime/class_linker.cc
+          git -C android/art diff > pine-art-rom-applied.diff
+
+      - name: Build ART hot update targets
+        env:
+          LUNCH_TARGET: ${{ inputs.lunch_target }}
+          BUILD_TARGETS: ${{ inputs.build_targets }}
+          BUILD_JOBS: ${{ inputs.build_jobs }}
+        run: |
+          set -euo pipefail
+          cd android
+          source build/envsetup.sh
+          lunch "$LUNCH_TARGET"
+          echo "TARGET_PRODUCT=$(get_build_var TARGET_PRODUCT)" | tee ../pine-art-build.env
+          echo "TARGET_BUILD_VARIANT=$(get_build_var TARGET_BUILD_VARIANT)" | tee -a ../pine-art-build.env
+          echo "PLATFORM_VERSION=$(get_build_var PLATFORM_VERSION)" | tee -a ../pine-art-build.env
+          echo "BUILD_ID=$(get_build_var BUILD_ID)" | tee -a ../pine-art-build.env
+          echo "PRODUCT_OUT=$(get_build_var PRODUCT_OUT)" | tee -a ../pine-art-build.env
+          read -r -a targets <<< "$BUILD_TARGETS"
+          m -j"$BUILD_JOBS" "${targets[@]}"
+
+      - name: Package ART hot update artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/pine-art-hotupdate/files
+          cp pine-art-build.env artifacts/pine-art-hotupdate/
+          cp pine-art-revision.txt artifacts/pine-art-hotupdate/
+          cp pine-art-rom-resolved-manifest.xml artifacts/pine-art-hotupdate/
+          cp pine-art-rom-applied.diff artifacts/pine-art-hotupdate/
+          mapfile -t apex_files < <(find android/out -type f \( -name 'com.android.art*.apex' -o -name 'com.android.runtime*.apex' \) | sort)
+          if [ "${#apex_files[@]}" -eq 0 ]; then
+            echo "No ART/runtime APEX files produced." >&2
+            find android/out -type f \( -name '*art*.apex' -o -name 'libart.so' -o -name 'libdexfile.so' \) | sort | head -n 200 >&2
+            exit 1
+          fi
+          printf '%s\n' "${apex_files[@]}" > artifacts/pine-art-hotupdate/apex-files.txt
+          for file in "${apex_files[@]}"; do
+            cp -f "$file" artifacts/pine-art-hotupdate/files/
+          done
+          find android/out -type f \( -name 'libart.so' -o -name 'libartbase.so' -o -name 'libdexfile.so' -o -name 'libartpalette.so' \) | sort > artifacts/pine-art-hotupdate/runtime-libs.txt
+          {
+            echo "# pine ART hot update"
+            echo
+            echo "ROM baseline: PixelExtended pine Android 12 / snow"
+            echo "Patch: RegisterDexFile DEX dump hook"
+            echo
+            echo "Generated files:"
+            sed 's#^#- #' artifacts/pine-art-hotupdate/apex-files.txt
+            echo
+            echo "Use devices/pine/scripts/install-pine-art-hotupdate.ps1 from this repo to push and stage the APEX on device 103."
+          } > artifacts/pine-art-hotupdate/README.md
+          (cd artifacts/pine-art-hotupdate && sha256sum files/* *.txt *.env *.diff *.xml README.md > SHA256SUMS)
+
+      - name: Upload ART hot update artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pine-art-hotupdate
+          retention-days: 7
+          path: artifacts/pine-art-hotupdate/
+          if-no-files-found: error

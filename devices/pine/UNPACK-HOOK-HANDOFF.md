@@ -160,7 +160,7 @@ C:\Users\16547\Desktop\android-docker-boot-builder-github-work\artifacts\pine-ar
 devices/pine/scripts/install-pine-art-hotupdate.ps1
 ```
 
-该 workflow 使用 `PixelExtended/manifest@snow` 作为 ROM 基线证据，实际同步该 manifest 声明的 `android-12.1.0_r22` AOSP build tree，给最终 `art` 仓库应用 `RegisterDexFile` dump patch，默认构建 `mainline_modules_arm64-userdebug` 的 `com.android.art`，输出 artifact：
+该 workflow 使用 `PixelExtended/manifest@snow` 作为 ROM 基线证据，实际同步该 manifest 声明的 `android-12.1.0_r22` AOSP build tree，给最终 `art` 仓库应用 `RegisterDexFile` dump patch，默认构建 `module_arm64-userdebug` 的 `com.android.art`，输出 artifact：
 
 ```text
 pine-art-hotupdate
@@ -339,4 +339,5 @@ C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-rom
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-xda-baseline-20260615-234706
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-r22-workflow-20260616-000937
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-envsetup-nounset-20260616-003142
+C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-module-arm64-20260616-004622
 ```

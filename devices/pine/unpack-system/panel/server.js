@@ -53,6 +53,10 @@ function safeName(value) {
   return String(value || "app").replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120);
 }
 
+function isValidPackageName(value) {
+  return /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(String(value || ""));
+}
+
 function run(command, args, options = {}) {
   const timeoutMs = options.timeoutMs || 120000;
   const input = options.input;
@@ -132,6 +136,20 @@ async function adbRoot(command, options) {
 
 async function adbRootExecOut(command, outFile, timeoutMs) {
   return capture(ADB, ["-s", ADB_SERIAL, "exec-out", ROOT_SU, "-c", command], outFile, timeoutMs);
+}
+
+async function enableRomArtDexDump(job, packageName) {
+  const appDumpDir = `/data/user/0/${packageName}/cache/pine-art-dumps`;
+  addLog(job, "enable ROM ART dexdump before launch");
+  await adbRoot(`rm -rf ${shellQuote(appDumpDir)}`, { timeoutMs: 30000 });
+  await adbRoot(`setprop debug.pine.art_dexdump_pkg ${shellQuote(packageName)}`, { timeoutMs: 30000 });
+  await adbRoot("setprop debug.pine.art_dexdump 1", { timeoutMs: 30000 });
+}
+
+async function disableRomArtDexDump(job) {
+  addLog(job, "disable ROM ART dexdump properties");
+  await adbRoot("setprop debug.pine.art_dexdump 0", { timeoutMs: 30000 });
+  await adbRoot("setprop debug.pine.art_dexdump_pkg ''", { timeoutMs: 30000 });
 }
 
 function splitBuffer(buffer, delimiter) {
@@ -219,6 +237,7 @@ function formatDumperCommand(packageName, remoteOut) {
 }
 
 async function runJob(job, apkPath, packageName) {
+  let romArtDexDumpEnabled = false;
   try {
     addLog(job, `target serial: ${ADB_SERIAL}`);
     if (ADB_SERIAL.includes(":")) {
@@ -232,6 +251,9 @@ async function runJob(job, apkPath, packageName) {
     }
     if (!packageName) {
       throw new Error("packageName is required when aapt/aapt2 is not available");
+    }
+    if (!isValidPackageName(packageName)) {
+      throw new Error(`invalid packageName: ${packageName}`);
     }
     job.packageName = packageName;
 
@@ -247,14 +269,17 @@ async function runJob(job, apkPath, packageName) {
     addLog(job, (install.stdout + install.stderr).trim());
     if (install.code !== 0) throw new Error("adb install failed");
 
-    addLog(job, "launch APK through monkey");
-    await adbShell(`monkey -p ${shellQuote(packageName)} -c android.intent.category.LAUNCHER 1`, { timeoutMs: 30000 });
-
     const safePackage = safeName(packageName);
     const remoteOut = `/data/local/tmp/pine-unpack-out/${safePackage}/${job.id}`;
     job.remoteOut = remoteOut;
     addLog(job, `prepare remote out: ${remoteOut}`);
     await adbRoot(`rm -rf ${shellQuote(remoteOut)} && mkdir -p ${shellQuote(remoteOut)}`, { timeoutMs: 30000 });
+
+    await enableRomArtDexDump(job, packageName);
+    romArtDexDumpEnabled = true;
+
+    addLog(job, "launch APK through monkey");
+    await adbShell(`monkey -p ${shellQuote(packageName)} -c android.intent.category.LAUNCHER 1`, { timeoutMs: 30000 });
 
     addLog(job, "run dumper backend");
     const dumper = await adbRoot(formatDumperCommand(packageName, remoteOut), {
@@ -282,6 +307,10 @@ async function runJob(job, apkPath, packageName) {
   } catch (error) {
     job.status = "failed";
     addLog(job, `ERROR: ${error.message}`);
+  } finally {
+    if (romArtDexDumpEnabled) {
+      await disableRomArtDexDump(job);
+    }
   }
 }
 

@@ -1,15 +1,16 @@
 # Redmi 7A pine unpack hook handoff
 
-更新时间：2026-06-14
+更新时间：2026-06-15
 
 ## 目标
 
-把当前 7A / `pine` 的 Android 12 ROM 线扩展成内部授权脱壳测试环境：
+把当前 7A / `pine` 的 Android 12 ROM 线扩展成内部授权脱壳测试环境，当前主线为 ROM/AOSP/ART 源码级修改：
 
 - 上传 APK
 - 安装到 7A
+- 启用 ART dump 属性
 - 启动应用
-- 调用设备端 hook dumper
+- 由 patched ART 在 `RegisterDexFile` 注册点写出 DEX
 - 回传 DEX 输出包
 
 面板和文档均注明：仅用于内部授权测试，禁止用于非法目的。
@@ -17,13 +18,23 @@
 ## 当前基线
 
 - ROM：`PixelExtended_pine-12.0-20220227-0902-OFFICIAL`
+- ROM 源码基线：`PixelExtended/manifest@snow`
+- AOSP/ART 基线：`android-12.0.0_r32`
+- Build ID：`SQ1D.220205.004`
+- Security patch：`2022-02-05`
 - Android：12 / SDK 31
 - Kernel：`4.9.297-perf/pine-g3ce83b96c7ea`
 - ADB：历史可用地址 `192.168.2.103:5555`
 - Root：历史可用入口 `/debug_ramdisk/su`
 - Docker：已验证 `29.5.2`、bridge/DNS/Web panel 可用
 
-当前 ADB 未在线，本次没有刷机或真机验证。
+当前 ART 源码参考 checkout：
+
+```text
+C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.external\art-android-12.0.0_r32
+```
+
+该 checkout 为 `platform/art@android-12.0.0_r32`，当前 commit `00c84f21871a8df8c4acfd9469be80095f6c6a7d`。
 
 ## 关键判断
 
@@ -46,7 +57,44 @@ CONFIG_RING_BUFFER=y
 # CONFIG_BPF_JIT is not set
 ```
 
-Linux 4.9 没有新版 BPF ringbuf map，所以不能直接照搬 Android 13-17 的 ringbuf eBPF DEX dumper。pine 这条线应走 4.9 兼容方案：perf events、tracefs uprobes，或 ROM/ART 侧 hook backend。
+Linux 4.9 没有新版 BPF ringbuf map，所以不能直接照搬 Android 13-17 的 ringbuf eBPF DEX dumper。pine 当前主线必须是 ROM/ART 侧 hook backend，内核 hook 只作为辅助观测能力。
+
+## ART 源码补丁
+
+已落地的正式补丁：
+
+```text
+devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch
+```
+
+补丁落点：
+
+```text
+art/runtime/class_linker.cc
+ClassLinker::RegisterDexFile(const DexFile& dex_file, ObjPtr<mirror::ClassLoader> class_loader)
+```
+
+行为：
+
+- 仅在非 boot class loader 的 DexFile 首次注册成功后触发。
+- 通过 `debug.pine.art_dexdump=1` 或 `persist.sys.pine_art_dexdump=1` 开启。
+- 通过 `debug.pine.art_dexdump_pkg=<package>` 或 `persist.sys.pine_art_dexdump_pkg=<package>` 限定目标包。
+- 从 `dex_file.Begin()` 和 `dex_file.Size()` 写出原始 DEX。
+- 输出到目标应用自己可写目录：`/data/user/0/<package>/cache/pine-art-dumps/`。
+
+应用到完整 ROM 源码树：
+
+```bash
+bash devices/pine/scripts/apply-pine-art-patch.sh "$ANDROID_BUILD_TOP/art"
+```
+
+或者手工：
+
+```bash
+git -C "$ANDROID_BUILD_TOP/art" apply devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch
+```
+
+旧的 `/data/local/tmp/pine-art-dexdump` 进程扫描器不再是主线，只保留为手动 fallback；`.github/workflows/build-pine-art-dexdump.yml` 已改为仅 `workflow_dispatch`。
 
 ## xiaojianbang stealth hook 结论
 
@@ -76,6 +124,8 @@ APatch
 ## 新增文件
 
 - `devices/pine/config/unpack-hook-android12.fragment`
+- `devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch`
+- `devices/pine/scripts/apply-pine-art-patch.sh`
 - `devices/pine/scripts/build-pine-unpack-kernel.sh`
 - `devices/pine/unpack-system/device/pine-run-dumper.sh`
 - `devices/pine/unpack-system/panel/server.js`
@@ -127,15 +177,39 @@ http://127.0.0.1:8787/
 /data/local/tmp/pine-run-dumper.sh
 ```
 
+安装 APK 后，面板会在启动目标应用前设置：
+
+```sh
+setprop debug.pine.art_dexdump_pkg <package>
+setprop debug.pine.art_dexdump 1
+```
+
 然后调用：
 
 ```text
 /data/local/tmp/pine-run-dumper.sh --package <package> --out <remote-out> --seconds 45
 ```
 
-## 设备端 dumper 要求
+## 设备端输出回收
 
-必须至少安装一个 backend：
+```text
+/data/local/tmp/pine-run-dumper.sh
+```
+
+优先回收 ROM ART patch 写出的文件：
+
+```text
+/data/user/0/<package>/cache/pine-art-dumps/*.dex
+/data/user/0/<package>/cache/pine-art-dumps/*.meta
+```
+
+并复制到任务输出：
+
+```text
+<remote-out>/rom-art-dumps/
+```
+
+如果 ROM ART 输出不存在，才会尝试 fallback：
 
 ```text
 /data/local/tmp/pine-art-dexdump
@@ -144,8 +218,6 @@ http://127.0.0.1:8787/
 ```
 
 其中 `xiaojianbang_hook` 只会被识别并写入兼容性说明，不会被误当作 DEX dumper。它需要另写 DEX 输出集成层，且当前 4.9 非 GKI 线不满足其官方环境要求。
-
-如果 backend 不存在，面板仍会回传 `diagnostics.txt` 和 `README-NO-DUMPER.txt`，但不会产生脱壳 DEX。
 
 ## 验证清单
 
@@ -159,10 +231,19 @@ adb -s 192.168.2.103:5555 shell /debug_ramdisk/su -c 'ls -ld /sys/kernel/tracing
 
 再启动本地面板上传一个自有测试 APK，下载 `downloads/<job>-<package>-dex.tar.gz`，确认里面有目标 DEX 和 `diagnostics.txt`。
 
+ROM ART patch 验证重点：
+
+```sh
+adb -s 192.168.2.103:5555 shell /debug_ramdisk/su -c 'getprop debug.pine.art_dexdump; getprop debug.pine.art_dexdump_pkg'
+adb -s 192.168.2.103:5555 shell /debug_ramdisk/su -c 'find /data/user/0/<package>/cache/pine-art-dumps -type f -maxdepth 1 -print 2>/dev/null'
+```
+
 ## 备份
 
 变更前快照：
 
 ```text
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-unpack-20260614-201404
+C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-rom-20260615-090544
+C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-rom-20260615-092620
 ```

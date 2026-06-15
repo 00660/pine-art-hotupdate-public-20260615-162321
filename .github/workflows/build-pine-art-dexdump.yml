@@ -1,12 +1,6 @@
-name: Build pine ART dexdump backend
+name: Build pine legacy ptrace dexdump fallback
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/build-pine-art-dexdump.yml
-      - devices/pine/unpack-system/device/pine-art-dexdump.c
   workflow_dispatch:
 
 permissions:
@@ -32,6 +26,7 @@ jobs:
       - name: Build arm64 backend
         run: |
           set -euo pipefail
+          echo "::notice::This is a legacy ptrace/memory-scan fallback. The primary pine path is the ROM ART android-12.0.0_r32 patch."
           mkdir -p devices/pine/artifacts
           CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android23-clang"
           "$CC" -O2 -Wall -Wextra -fPIE -pie \

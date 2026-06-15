@@ -31,6 +31,13 @@ if [ -z "$PACKAGE" ] || [ -z "$OUT" ]; then
   exit 2
 fi
 
+case "$PACKAGE" in
+  *[!A-Za-z0-9._]* | "" | .* | *..* | *.)
+    echo "invalid package: $PACKAGE" >&2
+    exit 2
+    ;;
+esac
+
 mkdir -p "$OUT"
 
 {
@@ -54,7 +61,47 @@ mkdir -p "$OUT"
   ls -l /apex/com.android.art/lib64/libart.so /system/lib64/libart.so 2>/dev/null || true
   echo "pm_path="
   pm path "$PACKAGE" 2>/dev/null || true
+  echo "rom_art_props="
+  getprop debug.pine.art_dexdump 2>/dev/null || true
+  getprop debug.pine.art_dexdump_pkg 2>/dev/null || true
 } > "$OUT/diagnostics.txt"
+
+collect_rom_art_dumps() {
+  dest="$OUT/rom-art-dumps"
+  mkdir -p "$dest"
+  deadline=$(( $(date +%s) + SECONDS_TO_RUN ))
+  found=0
+
+  while :; do
+    for source_dir in /data/user/*/"$PACKAGE"/cache/pine-art-dumps /data/data/"$PACKAGE"/cache/pine-art-dumps; do
+      if [ -d "$source_dir" ]; then
+        find "$source_dir" -type f \( -name '*.dex' -o -name '*.meta' \) -exec cp -p {} "$dest"/ \; 2>/dev/null || true
+      fi
+    done
+
+    found="$(find "$dest" -type f -name '*.dex' 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "${found:-0}" -gt 0 ]; then
+      {
+        echo "rom_art_dump_dir=$dest"
+        echo "rom_art_dumped=$found"
+      } >> "$OUT/diagnostics.txt"
+      return 0
+    fi
+
+    now="$(date +%s)"
+    if [ "$now" -ge "$deadline" ]; then
+      break
+    fi
+    sleep 2
+  done
+
+  echo "rom_art_dumped=0" >> "$OUT/diagnostics.txt"
+  return 1
+}
+
+if collect_rom_art_dumps; then
+  exit 0
+fi
 
 if [ -x /data/local/tmp/pine-art-dexdump ]; then
   /data/local/tmp/pine-art-dexdump --package "$PACKAGE" --out "$OUT" --seconds "$SECONDS_TO_RUN"
@@ -96,15 +143,16 @@ No device dumper backend was found.
 
 Expected one of:
 
+- ROM ART patch enabled by debug.pine.art_dexdump=1
 - /data/local/tmp/pine-art-dexdump
 - /data/local/tmp/eBPFDexDumper
 - /data/local/tmp/xiaojianbang_hook plus a compatible GKI/APatch kernel and a
   DEX-writing integration layer
 
 For the current Redmi 7A / pine Android 12 kernel 4.9 baseline, the newer
-Android 13-17 eBPF ringbuf dumper cannot be assumed to work. Build and flash
-the internal hook kernel fragment first, then install a pine-compatible ART
-hook backend that writes dex files into the output directory passed here.
+Android 13-17 eBPF ringbuf dumper cannot be assumed to work. The preferred
+path is rebuilding the ROM with the android-12.0.0_r32 ART patch, then letting
+this wrapper collect DEX files from the target app cache.
 EOF
 
 exit 20

@@ -1,0 +1,75 @@
+name: Verify pine Android 12 ART ROM patch
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/verify-pine-art-rom-patch.yml
+      - devices/pine/patches/art/android-12.0.0_r32/**
+      - devices/pine/scripts/apply-pine-art-patch.sh
+      - devices/pine/unpack-system/device/pine-run-dumper.sh
+      - devices/pine/unpack-system/panel/server.js
+      - devices/pine/unpack-system/README.md
+      - devices/pine/UNPACK-HOOK-HANDOFF.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-pine-art-rom-patch:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout patch repo
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends git ca-certificates
+
+      - name: Clone clean AOSP ART baseline
+        run: |
+          set -euo pipefail
+          git clone --branch android-12.0.0_r32 --depth 1 \
+            https://android.googlesource.com/platform/art \
+            art-android-12.0.0_r32
+          git -C art-android-12.0.0_r32 rev-parse HEAD
+
+      - name: Apply pine ART patch
+        run: |
+          set -euo pipefail
+          PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch"
+          git -C art-android-12.0.0_r32 apply --check "$PATCH"
+          git -C art-android-12.0.0_r32 apply "$PATCH"
+          git -C art-android-12.0.0_r32 diff --check
+          grep -n "PineMaybeDumpRegisteredDexFile" art-android-12.0.0_r32/runtime/class_linker.cc
+          grep -n "debug.pine.art_dexdump" art-android-12.0.0_r32/runtime/class_linker.cc
+
+      - name: Validate wrapper syntax
+        run: |
+          set -euo pipefail
+          bash -n devices/pine/scripts/apply-pine-art-patch.sh
+          bash -n devices/pine/unpack-system/device/pine-run-dumper.sh
+          node --check devices/pine/unpack-system/panel/server.js
+
+      - name: Package patch handoff
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/pine-art-rom-patch
+          cp devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch artifacts/pine-art-rom-patch/
+          cp devices/pine/scripts/apply-pine-art-patch.sh artifacts/pine-art-rom-patch/
+          cp devices/pine/UNPACK-HOOK-HANDOFF.md artifacts/pine-art-rom-patch/
+          cp devices/pine/unpack-system/README.md artifacts/pine-art-rom-patch/
+          git -C art-android-12.0.0_r32 diff > artifacts/pine-art-rom-patch/applied-art.diff
+          sha256sum artifacts/pine-art-rom-patch/* > artifacts/pine-art-rom-patch/SHA256SUMS
+
+      - name: Upload ART patch handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: pine-art-rom-patch-android-12.0.0_r32
+          retention-days: 7
+          path: artifacts/pine-art-rom-patch/
+          if-no-files-found: error

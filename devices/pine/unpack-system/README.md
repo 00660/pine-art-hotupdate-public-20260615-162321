@@ -13,7 +13,19 @@ Target baseline from the current pine handoff:
 - ADB: `192.168.2.103:5555`
 - Root entry observed earlier: `/debug_ramdisk/su`
 
-This panel is a local PC-side ADB controller. It uploads an APK, installs it on the 7A, starts the package, runs the device-side dumper wrapper, and returns a tar.gz of the dumper output.
+This panel is a local PC-side ADB controller. It uploads an APK, installs it on the 7A, enables the ROM ART dump switch, starts the package, runs the device-side wrapper, and returns a tar.gz of the dumper output.
+
+## ROM ART Patch
+
+The primary backend for this ROM line is an ART source patch, not an external injection layer.
+
+- Baseline: PixelExtended `snow`, AOSP/ART tag `android-12.0.0_r32`, build id `SQ1D.220205.004`.
+- Patch file: `devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch`.
+- Hook point: `ClassLinker::RegisterDexFile` in `runtime/class_linker.cc`.
+- Switch: `debug.pine.art_dexdump=1` plus `debug.pine.art_dexdump_pkg=<package>`.
+- Output inside target app: `/data/user/0/<package>/cache/pine-art-dumps/`.
+
+The patch writes the registered DEX bytes from `DexFile::Begin()` and `DexFile::Size()` after the target package loads a DEX through ART. The device wrapper then copies those files into the job output directory before the archive is pulled back.
 
 ## Run
 
@@ -40,14 +52,22 @@ The panel deploys:
 /data/local/tmp/pine-run-dumper.sh
 ```
 
-The wrapper expects one backend binary to exist on the device:
+Preferred path after flashing a ROM built with the ART patch:
+
+```text
+debug.pine.art_dexdump=1
+debug.pine.art_dexdump_pkg=<package>
+/data/user/0/<package>/cache/pine-art-dumps/*.dex
+```
+
+The wrapper first waits for and collects those ROM ART dumps. External binaries remain fallback only:
 
 ```text
 /data/local/tmp/pine-art-dexdump
 /data/local/tmp/eBPFDexDumper
 ```
 
-For this Android 12 / Linux 4.9 pine baseline, do not assume the Android 13-17 eBPF ringbuf dumper works unchanged. Use the `unpack-hook-android12.fragment` kernel config and a 4.9-compatible backend using perf events, tracefs uprobes, or an ART hook backend.
+For this Android 12 / Linux 4.9 pine baseline, do not assume the Android 13-17 eBPF ringbuf dumper works unchanged. Build the ROM with the ART patch first; use kernel/perf/tracefs only as auxiliary observability.
 
 ## xiaojianbang stealth hook note
 
@@ -110,4 +130,4 @@ Each job downloads:
 downloads/<job>-<package>-dex.tar.gz
 ```
 
-The archive includes dumped DEX files when the backend succeeds, and always includes diagnostics from the device wrapper.
+The archive includes `rom-art-dumps/*.dex` when the ROM ART patch succeeds, and always includes diagnostics from the device wrapper.

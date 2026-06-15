@@ -104,3 +104,16 @@ workflow：`.github/workflows/build-boot.yml`
 `boot_source_url` 必须匹配目标 ROM 和设备，不能跨设备或跨 ROM 复用 boot 基线。
 
 `mido` 额外要求 ROM/vendor audio 同步接入 ALSA loopback capture。只启用 `CONFIG_SND_ALOOP=y` 会产生内核 PCM 节点，但 Android 应用层仍需要 Audio HAL 和 `audio_policy_configuration.xml` 暴露 input profile/device，详见 `devices/mido/HANDOFF.md`。
+
+## Pine Android 12 ART ROM Patch
+
+`pine` 当前脱壳主线是 ROM/AOSP/ART 源码级修改，不是外部注入层。实机基线已锁定为 `PixelExtended_pine-12.0-20220227-0902-OFFICIAL`，build id `SQ1D.220205.004`，security patch `2022-02-05`，对应 AOSP/ART tag `android-12.0.0_r32`。
+
+关键文件：
+
+- `devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch`
+- `devices/pine/scripts/apply-pine-art-patch.sh`
+- `.github/workflows/verify-pine-art-rom-patch.yml`
+- `devices/pine/UNPACK-HOOK-HANDOFF.md`
+
+patch 落点是 `art/runtime/class_linker.cc` 的 `ClassLinker::RegisterDexFile`。面板安装 APK 后先设置 `debug.pine.art_dexdump=1` 和 `debug.pine.art_dexdump_pkg=<package>`，再启动目标应用；patched ART 将 DEX 写到 `/data/user/0/<package>/cache/pine-art-dumps/`，设备 wrapper 负责复制到任务输出包。

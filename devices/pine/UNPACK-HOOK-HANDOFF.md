@@ -341,4 +341,5 @@ C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-envsetup-nounset-20260616-003142
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-module-arm64-20260616-004622
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-ccache-workspace-20260616-011623
+C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-disable-ccache-20260616-014220
 ```

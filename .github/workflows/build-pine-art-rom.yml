@@ -40,9 +40,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 360
     env:
-      USE_CCACHE: 1
-      CCACHE_DIR: ${{ github.workspace }}/.ccache
-      CCACHE_EXEC: /usr/bin/ccache
+      USE_CCACHE: 0
     steps:
       - name: Checkout patch repo
         uses: actions/checkout@v4
@@ -66,15 +64,12 @@ jobs:
             libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush \
             python-is-python3 python3 python3-pip rsync schedtool squashfs-tools \
             unzip xsltproc zip zlib1g-dev
-          sudo mkdir -p "$CCACHE_DIR"
-          sudo chown -R "$USER:$USER" "$CCACHE_DIR"
           sudo install -d -m 0755 /usr/local/bin
           curl -L --fail --retry 5 \
             https://storage.googleapis.com/git-repo-downloads/repo \
             -o /tmp/repo
           sudo install -m 0755 /tmp/repo /usr/local/bin/repo
           repo version
-          ccache --max-size=10G
 
       - name: Validate pine XDA ROM baseline
         env:

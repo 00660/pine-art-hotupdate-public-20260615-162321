@@ -66,6 +66,8 @@ jobs:
             libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush \
             python-is-python3 python3 python3-pip rsync schedtool squashfs-tools \
             unzip xsltproc zip zlib1g-dev
+          sudo mkdir -p "$CCACHE_DIR"
+          sudo chown -R "$USER:$USER" "$CCACHE_DIR"
           sudo install -d -m 0755 /usr/local/bin
           curl -L --fail --retry 5 \
             https://storage.googleapis.com/git-repo-downloads/repo \

@@ -325,6 +325,16 @@ adb -s 192.168.2.103:5555 shell /debug_ramdisk/su -c 'getprop debug.pine.art_dex
 adb -s 192.168.2.103:5555 shell /debug_ramdisk/su -c 'find /data/user/0/<package>/cache/pine-art-dumps -maxdepth 1 -type f -print 2>/dev/null'
 ```
 
+## 2026-06-16 ART Actions 磁盘修正
+
+- 提交 `30d5eec5546001af85656a24c228736d6eda6013` 已禁用 ccache。
+- 公开构建 run `27565000487` 在 `soong bootstrap` 阶段被 runner shutdown/cancel，日志为 `soong bootstrap failed with: signal: killed`。
+- 后续用 `build_jobs=1` 重跑 run `27565985867`，已避开 bootstrap kill，进入 ART 编译后在 `[93% 10275/10954]` 失败。
+- 关键失败行：`fatal error: error in backend: IO failure on output stream: No space left on device`。
+- 这次不是 ART patch 编译错误，根因是 GitHub hosted runner 磁盘被 AOSP 工作树、repo 元数据和 `out/` 同时占满。
+- `.github/workflows/build-pine-art-rom.yml` 已在 `Apply pine ART RegisterDexFile patch` 之后新增 `Prune repo metadata before ART build`，删除 `android/.repo` 和各项目 `.git` 元数据后再进入 Soong 编译。
+- `Build ART hot update targets` 现在会在编译前和退出时打印 `df -h`、`out`、`out/soong`、`out/target` 大小，便于继续判断是否仍需要缩小目标或进一步清理。
+
 ## 备份
 
 变更前快照：
@@ -342,4 +352,5 @@ C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-module-arm64-20260616-004622
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-ccache-workspace-20260616-011623
 C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-disable-ccache-20260616-014220
+C:\Users\16547\Desktop\android-docker-boot-builder-github-work\.backups\pine-art-disk-prune-20260616-064951
 ```

@@ -128,6 +128,19 @@ jobs:
           grep -n "debug.pine.art_dexdump" android/art/runtime/class_linker.cc
           git -C android/art diff > pine-art-rom-applied.diff
 
+      - name: Prune repo metadata before ART build
+        run: |
+          set -euo pipefail
+          echo "Disk before repo metadata prune:"
+          df -h
+          du -sh android/.repo 2>/dev/null || true
+          find android -name .git -prune -print | wc -l
+          rm -rf android/.repo
+          find android -name .git -prune -exec rm -rf {} +
+          echo "Disk after repo metadata prune:"
+          df -h
+          du -sh android 2>/dev/null || true
+
       - name: Build ART hot update targets
         env:
           LUNCH_TARGET: ${{ inputs.lunch_target }}
@@ -135,6 +148,7 @@ jobs:
           BUILD_JOBS: ${{ inputs.build_jobs }}
         run: |
           set -eo pipefail
+          trap 'echo "Disk state at build step exit:"; df -h; du -sh out out/soong out/target 2>/dev/null || true' EXIT
           LUNCH_TARGET="${LUNCH_TARGET:-module_arm64-userdebug}"
           BUILD_TARGETS="${BUILD_TARGETS:-com.android.art}"
           BUILD_JOBS="${BUILD_JOBS:-4}"
@@ -146,6 +160,9 @@ jobs:
           echo "PLATFORM_VERSION=$(get_build_var PLATFORM_VERSION)" | tee -a ../pine-art-build.env
           echo "BUILD_ID=$(get_build_var BUILD_ID)" | tee -a ../pine-art-build.env
           echo "PRODUCT_OUT=$(get_build_var PRODUCT_OUT)" | tee -a ../pine-art-build.env
+          echo "Disk before ART build:"
+          df -h
+          du -sh . out 2>/dev/null || true
           read -r -a targets <<< "$BUILD_TARGETS"
           m -j"$BUILD_JOBS" "${targets[@]}"
 

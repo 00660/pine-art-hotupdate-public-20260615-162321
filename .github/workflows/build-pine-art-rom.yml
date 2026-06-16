@@ -29,7 +29,7 @@ on:
       build_jobs:
         description: build jobs.
         required: false
-        default: "8"
+        default: "2"
 
 permissions:
   contents: read
@@ -118,7 +118,7 @@ jobs:
           set -eo pipefail
           LUNCH_TARGET="${LUNCH_TARGET:-aosp_arm64-userdebug}"
           BUILD_TARGETS="${BUILD_TARGETS:-com.android.art}"
-          BUILD_JOBS="${BUILD_JOBS:-8}"
+          BUILD_JOBS="${BUILD_JOBS:-2}"
           cd android
           export TOP="${TOP:-$PWD}"
           {

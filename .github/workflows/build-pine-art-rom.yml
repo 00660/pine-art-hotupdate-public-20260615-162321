@@ -188,7 +188,7 @@ jobs:
           (cd artifacts/pine-art-hotupdate && sha256sum files/* *.txt *.env *.diff *.xml README.md > SHA256SUMS)
 
       - name: Upload build diagnostics
-        if: always()
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: pine-art-build-diagnostics

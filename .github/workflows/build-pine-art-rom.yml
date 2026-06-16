@@ -17,7 +17,7 @@ on:
       lunch_target:
         description: Lunch target used for ART module build.
         required: false
-        default: mainline_modules_arm64-userdebug
+        default: aosp_arm64-userdebug
       build_targets:
         description: Space-separated Soong targets to build.
         required: false
@@ -114,7 +114,7 @@ jobs:
           BUILD_JOBS: ${{ inputs.build_jobs }}
         run: |
           set -eo pipefail
-          LUNCH_TARGET="${LUNCH_TARGET:-mainline_modules_arm64-userdebug}"
+          LUNCH_TARGET="${LUNCH_TARGET:-aosp_arm64-userdebug}"
           BUILD_TARGETS="${BUILD_TARGETS:-com.android.art}"
           BUILD_JOBS="${BUILD_JOBS:-4}"
           cd android

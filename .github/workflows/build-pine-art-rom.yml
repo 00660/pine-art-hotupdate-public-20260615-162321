@@ -142,7 +142,7 @@ jobs:
           echo "Starting build with ${BUILD_JOBS} jobs for targets: ${targets[*]}"
           echo "Build started at $(date)"
           set +e
-          m -j"$BUILD_JOBS" "${targets[@]}" 2>&1 | tee -a ../pine-art-build.log
+          build/soong/soong_ui.bash --make-mode --skip-soong-tests -j"$BUILD_JOBS" "${targets[@]}" 2>&1 | tee -a ../pine-art-build.log
           build_status=${PIPESTATUS[0]}
           set -e
           echo "Build completed at $(date)"

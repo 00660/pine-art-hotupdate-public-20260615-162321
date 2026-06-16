@@ -84,12 +84,7 @@ index e21a004..43cdc6e 100644
 +}
 +
 +static bool PineEnsureDir(const std::string& path) {
-+  mode_t mode = (path.find("/data/temp") == 0) ? 0777 : 0700;
-+  if (mkdir(path.c_str(), mode) == 0) {
-+    chmod(path.c_str(), mode);
-+    return true;
-+  }
-+  if (errno == EEXIST) {
++  if (mkdir(path.c_str(), 0700) == 0 || errno == EEXIST) {
 +    return true;
 +  }
 +  PLOG(WARNING) << "pine ART dexdump mkdir failed: " << path;
@@ -146,9 +141,9 @@ index e21a004..43cdc6e 100644
 +  }
 +
 +  const uint32_t checksum = PineReadLe32(begin + 8);
-+  const std::string base_dir = "/data/temp/pine-art-dumps";
-+  const std::string dump_dir = StringPrintf("%s/%s", base_dir.c_str(), package_name.c_str());
-+  if (!PineEnsureDir("/data/temp") || !PineEnsureDir(base_dir) || !PineEnsureDir(dump_dir)) {
++  const std::string cache_dir = StringPrintf("/data/temp/pine-art-dumps/%s", package_name.c_str());
++  const std::string dump_dir = cache_dir;
++  if (!PineEnsureDir(cache_dir) || !PineEnsureDir(dump_dir)) {
 +    return;
 +  }
 +

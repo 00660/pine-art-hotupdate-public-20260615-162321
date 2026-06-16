@@ -29,7 +29,7 @@ on:
       build_jobs:
         description: build jobs.
         required: false
-        default: "4"
+        default: "2"
 
 permissions:
   contents: read
@@ -116,8 +116,16 @@ jobs:
           set -eo pipefail
           LUNCH_TARGET="${LUNCH_TARGET:-aosp_arm64-userdebug}"
           BUILD_TARGETS="${BUILD_TARGETS:-com.android.art}"
-          BUILD_JOBS="${BUILD_JOBS:-4}"
+          BUILD_JOBS="${BUILD_JOBS:-2}"
           cd android
+          export TOP="${TOP:-$PWD}"
+          {
+            echo "== runner resources before build =="
+            df -h
+            free -h || true
+            nproc || true
+            ccache -s || true
+          } | tee ../pine-art-build.log
           set +u
           source build/envsetup.sh
           lunch "$LUNCH_TARGET"
@@ -127,7 +135,20 @@ jobs:
           echo "BUILD_ID=$(get_build_var BUILD_ID)" | tee -a ../pine-art-build.env
           echo "PRODUCT_OUT=$(get_build_var PRODUCT_OUT)" | tee -a ../pine-art-build.env
           read -r -a targets <<< "$BUILD_TARGETS"
-          m -j"$BUILD_JOBS" "${targets[@]}"
+          echo "BUILD_TARGETS=${targets[*]}" | tee -a ../pine-art-build.env
+          echo "BUILD_JOBS=$BUILD_JOBS" | tee -a ../pine-art-build.env
+          set +e
+          m -j"$BUILD_JOBS" "${targets[@]}" 2>&1 | tee -a ../pine-art-build.log
+          build_status=${PIPESTATUS[0]}
+          set -e
+          {
+            echo "== runner resources after build =="
+            df -h
+            free -h || true
+            ccache -s || true
+            echo "build_status=$build_status"
+          } | tee -a ../pine-art-build.log
+          exit "$build_status"
 
       - name: Package ART hot update artifacts
         run: |
@@ -160,6 +181,20 @@ jobs:
             echo "Use devices/pine/scripts/install-pine-art-hotupdate.ps1 from this repo to push and stage the APEX on device 103."
           } > artifacts/pine-art-hotupdate/README.md
           (cd artifacts/pine-art-hotupdate && sha256sum files/* *.txt *.env *.diff *.xml README.md > SHA256SUMS)
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pine-art-build-diagnostics
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            pine-art-build.log
+            pine-art-build.env
+            pine-art-revision.txt
+            pine-art-rom-resolved-manifest.xml
+            pine-art-rom-applied.diff
 
       - name: Upload ART hot update artifact
         uses: actions/upload-artifact@v4

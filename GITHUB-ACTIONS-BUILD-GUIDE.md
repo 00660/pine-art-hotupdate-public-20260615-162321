@@ -2,9 +2,9 @@
 
 ## 概述
 
-本仓库使用 GitHub Actions 自动构建 ART 模块的 APEX 热更新包，而不是完整的 ROM。这种方式：
+本仓库使用 GitHub Actions 同步 Android 12 AOSP 构建树，然后只构建 ART 模块的 APEX 热更新包，而不是完整的 ROM。这种方式：
 
-- ✅ **构建速度快**：只编译 ART 模块，不需要完整 ROM 编译（~30分钟 vs 数小时）
+- ✅ **构建范围小**：只编译 ART 模块，不构建 `otapackage`、`systemimage`、`bootimage` 等完整 ROM 目标
 - ✅ **体积小**：APEX 文件只有几十 MB，而不是几百 MB 的 system.img
 - ✅ **更新简单**：通过 `adb install --staged` 热更新，无需刷机
 - ✅ **无缝集成**：保留原 ROM 的其他功能，只替换 ART 运行时
@@ -37,10 +37,10 @@ git push origin main
 5. 配置参数（可选，默认值已经适配 Android 12）：
    - `manifest_url`: 默认 `https://android.googlesource.com/platform/manifest`
    - `manifest_branch`: 默认 `android-12.0.0_r32`
-   - `lunch_target`: 默认 `mainline_modules_arm64-userdebug`
+   - `lunch_target`: 默认 `aosp_arm64-userdebug`
    - `build_targets`: 默认 `com.android.art`
    - `sync_jobs`: 默认 `4`
-   - `build_jobs`: 默认 `4`
+   - `build_jobs`: 默认 `2`
 6. 点击 "Run workflow" 绿色按钮
 
 ## 构建过程
@@ -55,17 +55,18 @@ git push origin main
    - Android 构建工具链
    - ccache 加速
 
-3. **同步 Android 源码** (~15 分钟)
-   - 只同步 ART 模块相关源码
-   - 使用 `--depth=1` 减少下载量
+3. **同步 Android 源码** (~15 分钟或更久)
+   - 同步 AOSP 构建树，保证 Soong/envsetup/lunch 能正确解析 ART 依赖
+   - 使用 `--depth=1`、`--no-tags`、`--optimized-fetch` 减少下载量
 
 4. **应用 ART patch** (~1 分钟)
    - 应用 `pine-art-registerdexfile-dump.patch`
    - 验证 patch 成功
 
-5. **构建 ART 模块** (~20 分钟)
+5. **构建 ART 模块** (~20 分钟或更久)
    - 编译 `com.android.art` APEX
    - 生成 `.apex` 文件
+   - 构建日志会上传到 `pine-art-build-diagnostics`，失败时优先看这个 artifact
 
 6. **打包产物** (~1 分钟)
    - 收集所有 `.apex` 文件

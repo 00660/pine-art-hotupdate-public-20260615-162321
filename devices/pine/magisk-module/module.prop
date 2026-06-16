@@ -1,0 +1,6 @@
+id=pine_art_dexdump_setup
+name=Pine ART DEX Dump Setup
+version=1.0
+versionCode=1
+author=pine-internal
+description=Creates /data/temp/pine-art-dumps directory for ART DEX dumping. Requires pine ART-patched ROM.

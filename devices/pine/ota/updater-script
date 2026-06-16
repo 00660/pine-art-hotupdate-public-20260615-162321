@@ -1,0 +1,26 @@
+ui_print("========================================");
+ui_print("Pine ART DEX Dump System");
+ui_print("For Redmi 7A (pine) Android 12");
+ui_print("========================================");
+ui_print("");
+
+ui_print("Mounting /system...");
+run_program("/system/bin/mount", "/system");
+ui_print("Mounting /data...");
+run_program("/system/bin/mount", "/data");
+
+ui_print("");
+ui_print("Creating /data/temp directories...");
+run_program("/system/bin/mkdir", "-p", "/data/temp/pine-art-dumps");
+run_program("/system/bin/chmod", "0777", "/data/temp");
+run_program("/system/bin/chmod", "0777", "/data/temp/pine-art-dumps");
+
+ui_print("");
+ui_print("Installation complete!");
+ui_print("");
+ui_print("Usage:");
+ui_print("  Enable: setprop persist.sys.pine_art_dexdump true");
+ui_print("  Target: setprop persist.sys.pine_art_dexdump_pkg <pkg>");
+ui_print("  Output: /data/temp/pine-art-dumps/<package>/");
+ui_print("");
+ui_print("========================================");

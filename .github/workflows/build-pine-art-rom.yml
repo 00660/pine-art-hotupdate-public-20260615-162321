@@ -25,11 +25,11 @@ on:
       sync_jobs:
         description: repo sync jobs.
         required: false
-        default: "4"
+        default: "2"
       build_jobs:
         description: build jobs.
         required: false
-        default: "2"
+        default: "8"
 
 permissions:
   contents: read
@@ -77,9 +77,10 @@ jobs:
             -o /tmp/repo
           sudo install -m 0755 /tmp/repo /usr/local/bin/repo
           repo version
-          ccache --max-size=10G
+          ccache --max-size=20G
 
       - name: Sync Android 12 ART build tree
+        timeout-minutes: 90
         env:
           MANIFEST_URL: ${{ inputs.manifest_url }}
           MANIFEST_BRANCH: ${{ inputs.manifest_branch }}
@@ -88,7 +89,7 @@ jobs:
           set -euo pipefail
           MANIFEST_URL="${MANIFEST_URL:-https://android.googlesource.com/platform/manifest}"
           MANIFEST_BRANCH="${MANIFEST_BRANCH:-android-12.0.0_r32}"
-          SYNC_JOBS="${SYNC_JOBS:-4}"
+          SYNC_JOBS="${SYNC_JOBS:-2}"
           mkdir -p android
           cd android
           repo init -u "$MANIFEST_URL" -b "$MANIFEST_BRANCH" --depth=1
@@ -108,6 +109,7 @@ jobs:
           git -C android/art diff > pine-art-rom-applied.diff
 
       - name: Build ART hot update targets
+        timeout-minutes: 180
         env:
           LUNCH_TARGET: ${{ inputs.lunch_target }}
           BUILD_TARGETS: ${{ inputs.build_targets }}
@@ -116,7 +118,7 @@ jobs:
           set -eo pipefail
           LUNCH_TARGET="${LUNCH_TARGET:-aosp_arm64-userdebug}"
           BUILD_TARGETS="${BUILD_TARGETS:-com.android.art}"
-          BUILD_JOBS="${BUILD_JOBS:-2}"
+          BUILD_JOBS="${BUILD_JOBS:-8}"
           cd android
           export TOP="${TOP:-$PWD}"
           {
@@ -137,10 +139,13 @@ jobs:
           read -r -a targets <<< "$BUILD_TARGETS"
           echo "BUILD_TARGETS=${targets[*]}" | tee -a ../pine-art-build.env
           echo "BUILD_JOBS=$BUILD_JOBS" | tee -a ../pine-art-build.env
+          echo "Starting build with ${BUILD_JOBS} jobs for targets: ${targets[*]}"
+          echo "Build started at $(date)"
           set +e
           m -j"$BUILD_JOBS" "${targets[@]}" 2>&1 | tee -a ../pine-art-build.log
           build_status=${PIPESTATUS[0]}
           set -e
+          echo "Build completed at $(date)"
           {
             echo "== runner resources after build =="
             df -h

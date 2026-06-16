@@ -84,10 +84,9 @@ index e21a004..43cdc6e 100644
 +}
 +
 +static bool PineEnsureDir(const std::string& path) {
-+  // Use 0777 for /data/temp and its subdirs to allow cross-app access
 +  mode_t mode = (path.find("/data/temp") == 0) ? 0777 : 0700;
 +  if (mkdir(path.c_str(), mode) == 0) {
-+    chmod(path.c_str(), mode);  // Ensure permissions even if dir exists
++    chmod(path.c_str(), mode);
 +    return true;
 +  }
 +  if (errno == EEXIST) {

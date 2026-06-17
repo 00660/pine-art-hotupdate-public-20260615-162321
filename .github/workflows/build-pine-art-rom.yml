@@ -142,8 +142,23 @@ jobs:
           echo "Starting build with ${BUILD_JOBS} jobs for targets: ${targets[*]}"
           echo "Build started at $(date)"
           set +e
-          build/soong/soong_ui.bash --make-mode --skip-soong-tests -j"$BUILD_JOBS" "${targets[@]}" 2>&1 | tee -a ../pine-art-build.log
-          build_status=${PIPESTATUS[0]}
+          rm -f ../pine-art-build.status
+          (
+            build/soong/soong_ui.bash --make-mode --skip-soong-tests -j"$BUILD_JOBS" "${targets[@]}"
+            echo "$?" > ../pine-art-build.status
+          ) 2>&1 | tee -a ../pine-art-build.log &
+          build_pid=$!
+          while kill -0 "$build_pid" 2>/dev/null; do
+            {
+              echo "== build heartbeat $(date) =="
+              free -h || true
+              df -h . || true
+            } | tee -a ../pine-art-build.log
+            sleep 60
+          done
+          wait "$build_pid"
+          tee_status=$?
+          build_status="$(cat ../pine-art-build.status 2>/dev/null || echo "$tee_status")"
           set -e
           echo "Build completed at $(date)"
           {

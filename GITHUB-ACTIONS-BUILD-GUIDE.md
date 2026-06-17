@@ -67,6 +67,7 @@ git push origin main
    - 编译 `com.android.art` APEX
    - 生成 `.apex` 文件
    - 使用 `soong_ui.bash --make-mode --skip-soong-tests`，避免 GitHub runner 在 Soong bootstrap 自测阶段被 SIGTERM
+   - 构建期间每 60 秒输出心跳、内存和磁盘状态，避免无输出误杀并辅助定位资源瓶颈
    - 构建日志会上传到 `pine-art-build-diagnostics`，失败时优先看这个 artifact
 
 6. **打包产物** (~1 分钟)

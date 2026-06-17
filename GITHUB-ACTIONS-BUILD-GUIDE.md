@@ -41,7 +41,7 @@ git push origin main
    - `build_targets`: 默认 `com.android.art`
    - `sync_jobs`: 默认 `2`
    - `build_jobs`: 默认 `1`
-   - `add_swap`: 默认 `false`，只有日志显示内存压力时再开启
+   - `add_swap`: 默认 `true`。手动触发时可改为 `false`，但上一次 release 构建在默认 3GB swap 下触发 runner shutdown
 6. 点击 "Run workflow" 绿色按钮
 
 ## 构建过程
@@ -55,7 +55,7 @@ git push origin main
 2. **安装依赖** (~5 分钟)
    - Android 构建工具链
    - 默认禁用 ccache，避免 GitHub runner 的 `/mnt/ccache` 只读挂载导致构建失败
-   - 默认不创建 swap；上一次失败的直接原因是磁盘写满，不是内存耗尽。手动触发时可把 `add_swap=true` 作为应急开关，但会额外占用 8GB 磁盘
+   - 默认创建 8G swap；上一次 userdebug 构建的直接原因是磁盘写满，但 release 构建在默认 3GB swap 下又触发 runner shutdown。当前策略是先强化清盘，再保留 8G swap
 
 3. **同步 Android 源码** (~15 分钟或更久)
    - 同步 AOSP 构建树，保证 Soong/envsetup/lunch 能正确解析 ART 依赖
@@ -240,7 +240,7 @@ I/art     (12345): pine ART dexdump wrote /data/temp/pine-art-dumps/com.android.
 
 当前 workflow 的处理方式是减少每次重跑成本和降低再次爆盘概率：
 - 默认构建 `aosp_arm64-user` 的 release ART APEX，避免 userdebug/debug 变体。
-- 默认不创建 8GB swap，避免把磁盘提前吃掉。
+- 默认创建 8GB swap，避免 Soong/ART 构建阶段把 15GB 内存和默认 3GB swap 打满。
 - 失败诊断 artifact 会保留构建日志、manifest、patch diff 和磁盘占用明细。
 
 真正意义上的断点续跑需要自托管 Linux runner 或一台长期保留工作目录的大盘云主机，把 `android/` 工作区留在本地磁盘上；同一台 runner 下一次执行才能从已有 `out/` 增量继续。
@@ -249,7 +249,6 @@ I/art     (12345): pine ART dexdump wrote /data/temp/pine-art-dumps/com.android.
 
 **A**: 上一次失败时，AOSP 同步完成后只剩约 11GB，最终 `/dev/root` 变为 100%。Workflow 已经按磁盘瓶颈优化。如果仍然失败，可能需要：
 - 减少 `sync_jobs` 参数
-- 保持 `add_swap=false`
 - 确认 `lunch_target=aosp_arm64-user`
 - 改用自托管 runner 或更大磁盘的云主机
 

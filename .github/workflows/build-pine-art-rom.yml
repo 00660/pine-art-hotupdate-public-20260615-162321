@@ -31,9 +31,9 @@ on:
         required: false
         default: "1"
       add_swap:
-        description: Add 8G swap before build. Leave false on hosted runners unless logs show memory pressure.
+        description: Add 8G swap before build. Set false only when disk pressure is worse than memory pressure.
         required: false
-        default: "false"
+        default: "true"
 
 permissions:
   contents: read
@@ -91,7 +91,7 @@ jobs:
           repo version
 
       - name: Add runner swap
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.add_swap == 'true' }}
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.add_swap == 'true' }}
         run: |
           set -euo pipefail
           sudo fallocate -l 8G /swapfile-extra || sudo dd if=/dev/zero of=/swapfile-extra bs=1M count=8192

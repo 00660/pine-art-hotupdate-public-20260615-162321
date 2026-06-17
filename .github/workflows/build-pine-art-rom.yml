@@ -131,6 +131,18 @@ jobs:
           grep -n "debug.pine.art_dexdump" android/art/runtime/class_linker.cc
           git -C android/art diff > pine-art-rom-applied.diff
 
+      - name: Drop repo metadata before build
+        run: |
+          set -euo pipefail
+          echo "== disk before dropping repo metadata =="
+          df -h
+          du -sh android/.repo 2>/dev/null || true
+          rm -rf android/.repo
+          echo "== disk after dropping repo metadata =="
+          df -h
+          echo "== android disk top-level after dropping repo metadata =="
+          du -xhd1 android 2>/dev/null | sort -h | tail -40 || true
+
       - name: Build ART hot update targets
         timeout-minutes: 180
         env:

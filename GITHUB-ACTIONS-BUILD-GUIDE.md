@@ -64,8 +64,13 @@ git push origin main
 4. **应用 ART patch** (~1 分钟)
    - 应用 `pine-art-registerdexfile-dump.patch`
    - 验证 patch 成功
+   - 导出 resolved manifest、ART revision 和已应用 diff 后，构建不再需要 `.repo`
 
-5. **构建 ART 模块** (~20 分钟或更久)
+5. **释放 repo 元数据空间** (~1 分钟)
+   - 在构建前删除 `android/.repo`，释放约 20GB 以上空间
+   - 这不是断点续跑；GitHub 托管 runner 失败后仍会销毁工作区，只是降低本轮再次爆盘概率
+
+6. **构建 ART 模块** (~20 分钟或更久)
    - 编译 `com.android.art` APEX
    - 生成 `.apex` 文件
    - 使用 `soong_ui.bash --make-mode --skip-soong-tests`，避免 GitHub runner 在 Soong bootstrap 自测阶段被 SIGTERM
@@ -74,7 +79,7 @@ git push origin main
    - 构建期间每 60 秒输出心跳、内存和磁盘状态；失败时还会输出 `android/out` 顶层占用，方便判断是哪个目录吃盘
    - 构建日志会上传到 `pine-art-build-diagnostics`，失败时优先看这个 artifact
 
-6. **打包产物** (~1 分钟)
+7. **打包产物** (~1 分钟)
    - 收集所有 `.apex` 文件
    - 生成 SHA256 校验和
    - 创建 README
@@ -241,6 +246,7 @@ I/art     (12345): pine ART dexdump wrote /data/temp/pine-art-dumps/com.android.
 当前 workflow 的处理方式是减少每次重跑成本和降低再次爆盘概率：
 - 默认构建 `aosp_arm64-user` 的 release ART APEX，避免 userdebug/debug 变体。
 - 默认创建 8GB swap，避免 Soong/ART 构建阶段把 15GB 内存和默认 3GB swap 打满。
+- 构建前删除 `android/.repo`，因为 resolved manifest、revision、patch diff 已经导出，后续 Soong 构建不需要 repo 元数据。
 - 失败诊断 artifact 会保留构建日志、manifest、patch diff 和磁盘占用明细。
 
 真正意义上的断点续跑需要自托管 Linux runner 或一台长期保留工作目录的大盘云主机，把 `android/` 工作区留在本地磁盘上；同一台 runner 下一次执行才能从已有 `out/` 增量继续。

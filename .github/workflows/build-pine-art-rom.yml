@@ -17,7 +17,7 @@ on:
       lunch_target:
         description: Lunch target used for ART module build.
         required: false
-        default: aosp_arm64-userdebug
+        default: aosp_arm64-user
       build_targets:
         description: Space-separated Soong targets to build.
         required: false
@@ -30,6 +30,10 @@ on:
         description: build jobs.
         required: false
         default: "1"
+      add_swap:
+        description: Add 8G swap before build. Leave false on hosted runners unless logs show memory pressure.
+        required: false
+        default: "false"
 
 permissions:
   contents: read
@@ -52,8 +56,20 @@ jobs:
         run: |
           set -euo pipefail
           df -h
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache || true
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /usr/local/share/boost \
+            /usr/local/share/powershell \
+            /usr/share/swift \
+            /opt/az \
+            /opt/ghc \
+            /opt/hostedtoolcache || true
+          if [ -n "${AGENT_TOOLSDIRECTORY:-}" ]; then
+            sudo rm -rf "$AGENT_TOOLSDIRECTORY" || true
+          fi
           sudo apt-get clean
+          sudo docker system prune -af || true
           df -h
 
       - name: Install Android build dependencies
@@ -75,6 +91,7 @@ jobs:
           repo version
 
       - name: Add runner swap
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.add_swap == 'true' }}
         run: |
           set -euo pipefail
           sudo fallocate -l 8G /swapfile-extra || sudo dd if=/dev/zero of=/swapfile-extra bs=1M count=8192
@@ -122,7 +139,7 @@ jobs:
           BUILD_JOBS: ${{ inputs.build_jobs }}
         run: |
           set -eo pipefail
-          LUNCH_TARGET="${LUNCH_TARGET:-aosp_arm64-userdebug}"
+          LUNCH_TARGET="${LUNCH_TARGET:-aosp_arm64-user}"
           BUILD_TARGETS="${BUILD_TARGETS:-com.android.art}"
           BUILD_JOBS="${BUILD_JOBS:-1}"
           cd android
@@ -133,6 +150,8 @@ jobs:
             free -h || true
             nproc || true
             ccache -s || true
+            echo "== workspace disk top-level =="
+            du -xhd1 "$PWD" 2>/dev/null | sort -h | tail -40 || true
           } | tee ../pine-art-build.log
           set +u
           source build/envsetup.sh
@@ -172,6 +191,8 @@ jobs:
             df -h
             free -h || true
             ccache -s || true
+            echo "== android/out disk top-level =="
+            du -xhd1 out 2>/dev/null | sort -h | tail -80 || true
             echo "build_status=$build_status"
           } | tee -a ../pine-art-build.log
           exit "$build_status"

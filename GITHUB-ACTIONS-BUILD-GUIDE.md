@@ -37,24 +37,25 @@ git push origin main
 5. 配置参数（可选，默认值已经适配 Android 12）：
    - `manifest_url`: 默认 `https://android.googlesource.com/platform/manifest`
    - `manifest_branch`: 默认 `android-12.0.0_r32`
-   - `lunch_target`: 默认 `aosp_arm64-userdebug`
+   - `lunch_target`: 默认 `aosp_arm64-user`
    - `build_targets`: 默认 `com.android.art`
    - `sync_jobs`: 默认 `2`
    - `build_jobs`: 默认 `1`
+   - `add_swap`: 默认 `false`，只有日志显示内存压力时再开启
 6. 点击 "Run workflow" 绿色按钮
 
 ## 构建过程
 
-构建通常需要 **30-60 分钟**，包括以下步骤：
+构建通常需要 **60-120 分钟**，包括以下步骤：
 
 1. **清理磁盘空间** (~2 分钟)
-   - 删除不需要的工具链
-   - 释放约 40GB 空间
+   - 删除 Android SDK、.NET、Swift、Boost、Azure、GHC、hosted tool cache 等 GitHub runner 预装大目录
+   - 在同步 AOSP 前尽量释放磁盘空间
 
 2. **安装依赖** (~5 分钟)
    - Android 构建工具链
    - 默认禁用 ccache，避免 GitHub runner 的 `/mnt/ccache` 只读挂载导致构建失败
-   - 额外创建 8G swap，缓解 GitHub runner 在 Soong 图生成阶段内存不足
+   - 默认不创建 swap；上一次失败的直接原因是磁盘写满，不是内存耗尽。手动触发时可把 `add_swap=true` 作为应急开关，但会额外占用 8GB 磁盘
 
 3. **同步 Android 源码** (~15 分钟或更久)
    - 同步 AOSP 构建树，保证 Soong/envsetup/lunch 能正确解析 ART 依赖
@@ -68,8 +69,9 @@ git push origin main
    - 编译 `com.android.art` APEX
    - 生成 `.apex` 文件
    - 使用 `soong_ui.bash --make-mode --skip-soong-tests`，避免 GitHub runner 在 Soong bootstrap 自测阶段被 SIGTERM
+   - 默认 `lunch_target=aosp_arm64-user`，只构建 release ART APEX，避免 userdebug 默认引入大量 debug/host 变体把 146GB runner 磁盘打满
    - 默认 `build_jobs=1`，降低普通 runner 内存峰值
-   - 构建期间每 60 秒输出心跳、内存和磁盘状态，避免无输出误杀并辅助定位资源瓶颈
+   - 构建期间每 60 秒输出心跳、内存和磁盘状态；失败时还会输出 `android/out` 顶层占用，方便判断是哪个目录吃盘
    - 构建日志会上传到 `pine-art-build-diagnostics`，失败时优先看这个 artifact
 
 6. **打包产物** (~1 分钟)
@@ -140,8 +142,7 @@ curl -L -H "Authorization: Bearer $TOKEN" \
 ```
 pine-art-hotupdate/
 ├── files/
-│   ├── com.android.art.debug.apex          # 主 ART APEX 文件
-│   └── com.android.runtime.debug.apex      # Runtime APEX 文件（可选）
+│   └── com.android.art.apex                # 主 ART release APEX 文件
 ├── pine-art-build.env                      # 构建环境信息
 ├── pine-art-revision.txt                   # ART 源码版本
 ├── pine-art-rom-resolved-manifest.xml      # repo manifest
@@ -190,10 +191,10 @@ adb shell su -c "mkdir -p /data/temp/pine-art-dumps"
 adb shell su -c "chmod 0777 /data/temp /data/temp/pine-art-dumps"
 
 # 3. 推送 APEX 文件
-adb push pine-art-hotupdate/files/com.android.art.debug.apex /data/local/tmp/
+adb push pine-art-hotupdate/files/com.android.art.apex /data/local/tmp/
 
 # 4. 安装并 stage APEX
-adb install --staged /data/local/tmp/com.android.art.debug.apex
+adb install --staged /data/local/tmp/com.android.art.apex
 
 # 5. 启用 DEX dump
 adb shell setprop persist.sys.pine_art_dexdump true
@@ -233,11 +234,24 @@ I/art     (12345): pine ART dexdump wrote /data/temp/pine-art-dumps/com.android.
 
 ## 常见问题
 
+### Q: 能不能从失败点继续跑，避免每次从头开始？
+
+**A**: GitHub 托管 runner 每次都是全新的临时机器，失败后 `android/out`、Soong 中间产物和已同步源码都会被销毁；而本项目失败点前的 `android/out` 已接近 146GB，超过 GitHub cache/artifact 的可用规模，所以不能可靠地保存整棵构建目录做真正断点续跑。
+
+当前 workflow 的处理方式是减少每次重跑成本和降低再次爆盘概率：
+- 默认构建 `aosp_arm64-user` 的 release ART APEX，避免 userdebug/debug 变体。
+- 默认不创建 8GB swap，避免把磁盘提前吃掉。
+- 失败诊断 artifact 会保留构建日志、manifest、patch diff 和磁盘占用明细。
+
+真正意义上的断点续跑需要自托管 Linux runner 或一台长期保留工作目录的大盘云主机，把 `android/` 工作区留在本地磁盘上；同一台 runner 下一次执行才能从已有 `out/` 增量继续。
+
 ### Q: 构建失败，提示磁盘空间不足
 
-**A**: GitHub Actions runner 只有约 14GB 可用空间。Workflow 已经清理了不必要的文件。如果仍然失败，可能需要：
+**A**: 上一次失败时，AOSP 同步完成后只剩约 11GB，最终 `/dev/root` 变为 100%。Workflow 已经按磁盘瓶颈优化。如果仍然失败，可能需要：
 - 减少 `sync_jobs` 参数
-- 使用更小的 `--depth` 值
+- 保持 `add_swap=false`
+- 确认 `lunch_target=aosp_arm64-user`
+- 改用自托管 runner 或更大磁盘的云主机
 
 ### Q: 安装 APEX 后设备无法启动
 
@@ -269,9 +283,9 @@ adb reboot
 
 ### 加速构建
 
-1. **使用 ccache**（已启用）：首次构建慢，后续增量构建快
-2. **增加并行任务**：如果 runner 性能好，可以提高 `build_jobs`
-3. **缓存 repo 同步**：可以添加 actions/cache 缓存 `.repo/`
+1. **自托管 runner**：唯一可靠的断点续跑方式，保留 `android/` 和 `out/` 工作区。
+2. **减少构建范围**：默认使用 `aosp_arm64-user` + `com.android.art`，避免 debug APEX。
+3. **谨慎开启 ccache**：GitHub 托管 runner 的磁盘已经是瓶颈，ccache 会额外占空间；只有在自托管大盘 runner 上才建议开启。
 
 ### 减少产物大小
 

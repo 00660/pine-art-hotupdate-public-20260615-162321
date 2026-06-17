@@ -53,7 +53,7 @@ git push origin main
 
 2. **安装依赖** (~5 分钟)
    - Android 构建工具链
-   - ccache 加速
+   - 默认禁用 ccache，避免 GitHub runner 的 `/mnt/ccache` 只读挂载导致构建失败
    - 额外创建 8G swap，缓解 GitHub runner 在 Soong 图生成阶段内存不足
 
 3. **同步 Android 源码** (~15 分钟或更久)

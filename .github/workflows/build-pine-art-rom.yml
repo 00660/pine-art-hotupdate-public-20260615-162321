@@ -29,7 +29,7 @@ on:
       build_jobs:
         description: build jobs.
         required: false
-        default: "2"
+        default: "1"
 
 permissions:
   contents: read
@@ -79,6 +79,17 @@ jobs:
           repo version
           ccache --max-size=20G
 
+      - name: Add runner swap
+        run: |
+          set -euo pipefail
+          sudo fallocate -l 8G /swapfile-extra || sudo dd if=/dev/zero of=/swapfile-extra bs=1M count=8192
+          sudo chmod 600 /swapfile-extra
+          sudo mkswap /swapfile-extra
+          sudo swapon /swapfile-extra
+          swapon --show
+          free -h
+          df -h
+
       - name: Sync Android 12 ART build tree
         timeout-minutes: 90
         env:
@@ -118,7 +129,7 @@ jobs:
           set -eo pipefail
           LUNCH_TARGET="${LUNCH_TARGET:-aosp_arm64-userdebug}"
           BUILD_TARGETS="${BUILD_TARGETS:-com.android.art}"
-          BUILD_JOBS="${BUILD_JOBS:-2}"
+          BUILD_JOBS="${BUILD_JOBS:-1}"
           cd android
           export TOP="${TOP:-$PWD}"
           {

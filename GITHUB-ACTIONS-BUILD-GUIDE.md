@@ -39,8 +39,8 @@ git push origin main
    - `manifest_branch`: 默认 `android-12.0.0_r32`
    - `lunch_target`: 默认 `aosp_arm64-userdebug`
    - `build_targets`: 默认 `com.android.art`
-   - `sync_jobs`: 默认 `4`
-   - `build_jobs`: 默认 `2`
+   - `sync_jobs`: 默认 `2`
+   - `build_jobs`: 默认 `1`
 6. 点击 "Run workflow" 绿色按钮
 
 ## 构建过程
@@ -54,6 +54,7 @@ git push origin main
 2. **安装依赖** (~5 分钟)
    - Android 构建工具链
    - ccache 加速
+   - 额外创建 8G swap，缓解 GitHub runner 在 Soong 图生成阶段内存不足
 
 3. **同步 Android 源码** (~15 分钟或更久)
    - 同步 AOSP 构建树，保证 Soong/envsetup/lunch 能正确解析 ART 依赖
@@ -67,6 +68,7 @@ git push origin main
    - 编译 `com.android.art` APEX
    - 生成 `.apex` 文件
    - 使用 `soong_ui.bash --make-mode --skip-soong-tests`，避免 GitHub runner 在 Soong bootstrap 自测阶段被 SIGTERM
+   - 默认 `build_jobs=1`，降低普通 runner 内存峰值
    - 构建期间每 60 秒输出心跳、内存和磁盘状态，避免无输出误杀并辅助定位资源瓶颈
    - 构建日志会上传到 `pine-art-build-diagnostics`，失败时优先看这个 artifact
 

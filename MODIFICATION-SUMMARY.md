@@ -6,6 +6,28 @@
 
 ## 修改内容
 
+### 2026-06-18 补充：OpenCommon 加载点覆盖
+
+针对 `com.moutai.mall` 已能启动但 `/data/temp/pine-art-dumps/com.moutai.mall` 没有产出的现象，确认旧补丁只在 `ClassLinker::RegisterDexFile()` 且 `class_loader != nullptr` 时写出，覆盖面不足。
+
+已更新 `devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch`：
+
+- 新增 `libdexfile/dex/dex_file_loader.cc` 的 `DexFileLoader::OpenCommon()` dump 点。
+- 支持 `dex` 与 `cdex` 头识别，输出后缀分别为 `.dex` 与 `.cdex`。
+- `ClassLinker::RegisterDexFile()` 不再要求 `class_loader != nullptr`，并记录新建/复用来源。
+- `.meta` 新增 `source=`，OpenCommon 产物额外新增 `kind=standard-dex|compact-dex`。
+- 已用本地 Android 12 `art` 源码执行 `git apply --check`、实际 apply 和 `git diff --check` 验证通过。
+
+验证目标：
+
+```bash
+adb shell setprop persist.sys.pine_art_dexdump true
+adb shell setprop persist.sys.pine_art_dexdump_pkg com.moutai.mall
+adb shell su -c "rm -rf /data/temp/pine-art-dumps/com.moutai.mall"
+adb shell monkey -p com.moutai.mall -c android.intent.category.LAUNCHER 1
+adb shell su -c "find /data/temp/pine-art-dumps/com.moutai.mall -maxdepth 1 -type f | head"
+```
+
 ### 1. 核心 Patch 修改
 
 **文件**：`devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch`

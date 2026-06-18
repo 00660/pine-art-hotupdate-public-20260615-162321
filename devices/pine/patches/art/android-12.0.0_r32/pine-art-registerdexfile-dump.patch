@@ -1,5 +1,217 @@
+diff --git a/libdexfile/dex/dex_file_loader.cc b/libdexfile/dex/dex_file_loader.cc
+index 861f911..be8495a 100644
+--- a/libdexfile/dex/dex_file_loader.cc
++++ b/libdexfile/dex/dex_file_loader.cc
+@@ -16,6 +16,16 @@
+ 
+ #include "dex_file_loader.h"
+ 
++#include <fcntl.h>
++#include <sys/stat.h>
++#include <sys/types.h>
++#include <unistd.h>
++
++#include <algorithm>
++#include <cerrno>
++#include <cstring>
++
++#include "android-base/properties.h"
+ #include "android-base/stringprintf.h"
+ 
+ #include "base/stl_util.h"
+@@ -55,6 +65,182 @@ class VectorContainer : public DexFileContainer {
+   DISALLOW_COPY_AND_ASSIGN(VectorContainer);
+ };
+ 
++static bool PineIsPackageNameChar(char ch) {
++  return (ch >= 'a' && ch <= 'z') ||
++         (ch >= 'A' && ch <= 'Z') ||
++         (ch >= '0' && ch <= '9') ||
++         ch == '.' ||
++         ch == '_';
++}
++
++static bool PineGetCurrentPackageName(std::string* package_name) {
++  char cmdline[256] = {};
++  int fd = open("/proc/self/cmdline", O_RDONLY | O_CLOEXEC);
++  if (fd < 0) {
++    return false;
++  }
++  ssize_t count = read(fd, cmdline, sizeof(cmdline) - 1);
++  close(fd);
++  if (count <= 0) {
++    return false;
++  }
++  size_t len = strnlen(cmdline, static_cast<size_t>(count));
++  if (len == 0) {
++    return false;
++  }
++  std::string process_name(cmdline, len);
++  size_t suffix_pos = process_name.find(':');
++  if (suffix_pos != std::string::npos) {
++    process_name.resize(suffix_pos);
++  }
++  if (process_name.empty()) {
++    return false;
++  }
++  for (char ch : process_name) {
++    if (!PineIsPackageNameChar(ch)) {
++      return false;
++    }
++  }
++  *package_name = process_name;
++  return true;
++}
++
++static bool PineArtDexDumpEnabledForPackage(const std::string& package_name) {
++  const bool enabled = android::base::GetBoolProperty("persist.sys.pine_art_dexdump", false) ||
++                       android::base::GetBoolProperty("debug.pine.art_dexdump", false);
++  if (!enabled) {
++    return false;
++  }
++  std::string target =
++      android::base::GetProperty("persist.sys.pine_art_dexdump_pkg", "");
++  if (target.empty()) {
++    target = android::base::GetProperty("debug.pine.art_dexdump_pkg", "");
++  }
++  return target.empty() || target == package_name;
++}
++
++static bool PineEnsureDir(const std::string& path) {
++  if (mkdir(path.c_str(), 0700) == 0 || errno == EEXIST) {
++    return true;
++  }
++  PLOG(WARNING) << "pine ART dexdump mkdir failed: " << path;
++  return false;
++}
++
++static uint32_t PineReadLe32(const uint8_t* data) {
++  return static_cast<uint32_t>(data[0]) |
++         (static_cast<uint32_t>(data[1]) << 8) |
++         (static_cast<uint32_t>(data[2]) << 16) |
++         (static_cast<uint32_t>(data[3]) << 24);
++}
++
++static void PineWriteOpenCommonMeta(const std::string& path,
++                                    const std::string& package_name,
++                                    const char* source,
++                                    const std::string& location,
++                                    size_t size,
++                                    uint32_t checksum,
++                                    const char* kind) {
++  int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
++  if (fd < 0) {
++    PLOG(WARNING) << "pine ART dexdump meta open failed: " << path;
++    return;
++  }
++  std::string meta = android::base::StringPrintf(
++      "package=%s\npid=%d\nsource=%s\nlocation=%s\nsize=%zu\nchecksum=%08x\nkind=%s\n",
++      package_name.c_str(),
++      getpid(),
++      source,
++      location.c_str(),
++      size,
++      checksum,
++      kind);
++  const char* data = meta.data();
++  size_t remaining = meta.size();
++  while (remaining != 0u) {
++    ssize_t written = write(fd, data, remaining);
++    if (written <= 0) {
++      PLOG(WARNING) << "pine ART dexdump meta write failed: " << path;
++      break;
++    }
++    data += written;
++    remaining -= static_cast<size_t>(written);
++  }
++  close(fd);
++}
++
++static void PineMaybeDumpOpenCommonDexFile(const DexFile& dex_file, const char* source) {
++  const uint8_t* begin = dex_file.Begin();
++  const size_t size = dex_file.Size();
++  if (begin == nullptr || size < 0x70u) {
++    return;
++  }
++  const bool is_dex = StandardDexFile::IsMagicValid(begin);
++  const bool is_cdex = CompactDexFile::IsMagicValid(begin);
++  if (!is_dex && !is_cdex) {
++    return;
++  }
++
++  std::string package_name;
++  if (!PineGetCurrentPackageName(&package_name) ||
++      !PineArtDexDumpEnabledForPackage(package_name)) {
++    return;
++  }
++
++  const uint32_t checksum = PineReadLe32(begin + 8);
++  const char* suffix = is_cdex ? "cdex" : "dex";
++  const char* kind = is_cdex ? "compact-dex" : "standard-dex";
++  const std::string dump_dir =
++      android::base::StringPrintf("/data/temp/pine-art-dumps/%s", package_name.c_str());
++  if (!PineEnsureDir(dump_dir)) {
++    return;
++  }
++
++  const std::string dex_path = android::base::StringPrintf("%s/pid%d_%zu_%08x.%s",
++                                                           dump_dir.c_str(),
++                                                           getpid(),
++                                                           size,
++                                                           checksum,
++                                                           suffix);
++  int fd = open(dex_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
++  if (fd < 0) {
++    if (errno != EEXIST) {
++      PLOG(WARNING) << "pine ART dexdump open failed: " << dex_path;
++    }
++    return;
++  }
++
++  const uint8_t* cursor = begin;
++  size_t remaining = size;
++  bool ok = true;
++  while (remaining != 0u) {
++    const size_t chunk = std::min(remaining, static_cast<size_t>(1024 * 1024));
++    ssize_t written = write(fd, cursor, chunk);
++    if (written <= 0) {
++      PLOG(WARNING) << "pine ART dexdump write failed: " << dex_path;
++      ok = false;
++      break;
++    }
++    cursor += written;
++    remaining -= static_cast<size_t>(written);
++  }
++  close(fd);
++
++  if (!ok) {
++    unlink(dex_path.c_str());
++    return;
++  }
++
++  PineWriteOpenCommonMeta(dex_path + ".meta",
++                          package_name,
++                          source,
++                          dex_file.GetLocation(),
++                          size,
++                          checksum,
++                          kind);
++  LOG(INFO) << "pine ART dexdump wrote " << dex_path;
++}
++
+ }  // namespace
+ 
+ using android::base::StringPrintf;
+@@ -409,6 +595,7 @@ std::unique_ptr<DexFile> DexFileLoader::OpenCommon(const uint8_t* base,
+   if (verify_result != nullptr) {
+     *verify_result = VerifyResult::kVerifySucceeded;
+   }
++  PineMaybeDumpOpenCommonDexFile(*dex_file, "DexFileLoader::OpenCommon");
+   return dex_file;
+ }
+ 
 diff --git a/runtime/class_linker.cc b/runtime/class_linker.cc
-index e21a004..43cdc6e 100644
+index e21a004..1354a5f 100644
 --- a/runtime/class_linker.cc
 +++ b/runtime/class_linker.cc
 @@ -16,9 +16,14 @@
@@ -25,7 +237,7 @@ index e21a004..43cdc6e 100644
  #include "android-base/stringprintf.h"
  
  #include "art_field-inl.h"
-@@ -160,6 +166,162 @@ using android::base::StringPrintf;
+@@ -160,6 +166,164 @@ using android::base::StringPrintf;
  static constexpr bool kCheckImageObjects = kIsDebugBuild;
  static constexpr bool kVerifyArtMethodDeclaringClasses = kIsDebugBuild;
  
@@ -101,15 +313,17 @@ index e21a004..43cdc6e 100644
 +static void PineWriteDexMeta(const std::string& path,
 +                             const DexFile& dex_file,
 +                             const std::string& package_name,
++                             const char* source,
 +                             uint32_t checksum) {
 +  int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
 +  if (fd < 0) {
 +    PLOG(WARNING) << "pine ART dexdump meta open failed: " << path;
 +    return;
 +  }
-+  std::string meta = StringPrintf("package=%s\npid=%d\nlocation=%s\nsize=%zu\nchecksum=%08x\n",
++  std::string meta = StringPrintf("package=%s\npid=%d\nsource=%s\nlocation=%s\nsize=%zu\nchecksum=%08x\n",
 +                                  package_name.c_str(),
 +                                  getpid(),
++                                  source,
 +                                  dex_file.GetLocation().c_str(),
 +                                  dex_file.Size(),
 +                                  checksum);
@@ -127,7 +341,7 @@ index e21a004..43cdc6e 100644
 +  close(fd);
 +}
 +
-+static void PineMaybeDumpRegisteredDexFile(const DexFile& dex_file) {
++static void PineMaybeDumpRegisteredDexFile(const DexFile& dex_file, const char* source) {
 +  const uint8_t* begin = dex_file.Begin();
 +  const size_t size = dex_file.Size();
 +  if (begin == nullptr || size < 0x70u || memcmp(begin, "dex\n", 4) != 0) {
@@ -181,14 +395,14 @@ index e21a004..43cdc6e 100644
 +    return;
 +  }
 +
-+  PineWriteDexMeta(dex_path + ".meta", dex_file, package_name, checksum);
++  PineWriteDexMeta(dex_path + ".meta", dex_file, package_name, source, checksum);
 +  LOG(INFO) << "pine ART dexdump wrote " << dex_path;
 +}
 +
  static void ThrowNoClassDefFoundError(const char* fmt, ...)
      __attribute__((__format__(__printf__, 1, 2)))
      REQUIRES_SHARED(Locks::mutator_lock_);
-@@ -4050,6 +4212,7 @@ ObjPtr<mirror::DexCache> ClassLinker::RegisterDexFile(const DexFile& dex_file,
+@@ -4050,6 +4214,7 @@ ObjPtr<mirror::DexCache> ClassLinker::RegisterDexFile(const DexFile& dex_file,
    LinearAlloc* const linear_alloc = GetOrCreateAllocatorForClassLoader(class_loader);
    DCHECK(linear_alloc != nullptr);
    ClassTable* table;
@@ -196,7 +410,7 @@ index e21a004..43cdc6e 100644
    {
      WriterMutexLock mu(self, *Locks::classlinker_classes_lock_);
      table = InsertClassTableForClassLoader(class_loader);
-@@ -4074,6 +4237,7 @@ ObjPtr<mirror::DexCache> ClassLinker::RegisterDexFile(const DexFile& dex_file,
+@@ -4074,6 +4239,7 @@ ObjPtr<mirror::DexCache> ClassLinker::RegisterDexFile(const DexFile& dex_file,
        // DCHECK that the arrays are null.
        h_dex_cache->InitializeNativeFields(&dex_file, linear_alloc);
        RegisterDexFileLocked(dex_file, h_dex_cache.Get(), h_class_loader.Get());
@@ -204,13 +418,14 @@ index e21a004..43cdc6e 100644
      }
      if (old_dex_cache != nullptr) {
        // Another thread managed to initialize the dex cache faster, so use that DexCache.
-@@ -4097,6 +4261,9 @@ ObjPtr<mirror::DexCache> ClassLinker::RegisterDexFile(const DexFile& dex_file,
+@@ -4097,6 +4263,10 @@ ObjPtr<mirror::DexCache> ClassLinker::RegisterDexFile(const DexFile& dex_file,
      self->AssertPendingOOMException();
      return nullptr;
    }
-+  if (registered_dex_file && h_class_loader.Get() != nullptr) {
-+    PineMaybeDumpRegisteredDexFile(dex_file);
-+  }
++  PineMaybeDumpRegisteredDexFile(
++      dex_file,
++      registered_dex_file ? "ClassLinker::RegisterDexFile:new"
++                          : "ClassLinker::RegisterDexFile:existing");
    table->InsertStrongRoot(h_dex_cache.Get());
    if (h_class_loader.Get() != nullptr) {
      // Since we added a strong root to the class table, do the write barrier as required for

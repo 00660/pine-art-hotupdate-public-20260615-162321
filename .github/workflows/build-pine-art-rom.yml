@@ -120,12 +120,13 @@ jobs:
           repo manifest -r > ../pine-art-rom-resolved-manifest.xml
           git -C art rev-parse HEAD > ../pine-art-revision.txt
 
-      - name: Apply pine ART, libcore, and Conscrypt crypto patches
+      - name: Apply pine ART, libcore, Conscrypt, and BoringSSL crypto patches
         run: |
           set -euo pipefail
           ART_PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch"
           LIBCORE_PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-libcore-crypto-dump.patch"
           CONSCRYPT_PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-conscrypt-crypto-dump.patch"
+          BORINGSSL_PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-boringssl-crypto-dump.patch"
           git -C android/art apply --check "$ART_PATCH"
           git -C android/art apply "$ART_PATCH"
           git -C android/art diff --check
@@ -146,6 +147,14 @@ jobs:
           grep -n "Conscrypt.TLS.write" android/external/conscrypt/repackaged/common/src/main/java/com/android/org/conscrypt/ConscryptFileDescriptorSocket.java
           grep -n "Conscrypt.EVP_CipherUpdate" android/external/conscrypt/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLEvpCipher.java
           git -C android/external/conscrypt diff > pine-conscrypt-crypto-dump-applied.diff
+          git -C android/external/boringssl apply --check "$BORINGSSL_PATCH"
+          git -C android/external/boringssl apply "$BORINGSSL_PATCH"
+          git -C android/external/boringssl diff --check
+          grep -n "pine_boringssl_dump_record" android/external/boringssl/src/crypto/fipsmodule/pine_boringssl_dump.h
+          grep -n "BoringSSL.EVP_EncryptUpdate" android/external/boringssl/src/crypto/fipsmodule/cipher/cipher.c
+          grep -n "BoringSSL.HMAC_Update" android/external/boringssl/src/crypto/fipsmodule/hmac/hmac.c
+          grep -n "BoringSSL.SHA512_Update" android/external/boringssl/src/crypto/fipsmodule/sha/sha512.c
+          git -C android/external/boringssl diff > pine-boringssl-crypto-dump-applied.diff
 
       - name: Drop repo metadata before build
         run: |
@@ -235,24 +244,26 @@ jobs:
           cp pine-art-rom-applied.diff artifacts/pine-art-hotupdate/
           cp pine-libcore-crypto-dump-applied.diff artifacts/pine-art-hotupdate/
           cp pine-conscrypt-crypto-dump-applied.diff artifacts/pine-art-hotupdate/
+          cp pine-boringssl-crypto-dump-applied.diff artifacts/pine-art-hotupdate/
           mapfile -t apex_files < <(find android/out -type f \( -name 'com.android.art*.apex' -o -name 'com.android.runtime*.apex' -o -name 'com.android.conscrypt*.apex' \) | sort)
           if [ "${#apex_files[@]}" -eq 0 ]; then
             echo "No ART/runtime/Conscrypt APEX files produced." >&2
-            find android/out -type f \( -name '*art*.apex' -o -name '*conscrypt*.apex' -o -name 'libart.so' -o -name 'libdexfile.so' -o -name 'libjavacrypto.so' \) | sort | head -n 200 >&2
+            find android/out -type f \( -name '*art*.apex' -o -name '*conscrypt*.apex' -o -name 'libart.so' -o -name 'libdexfile.so' -o -name 'libjavacrypto.so' -o -name 'libcrypto.so' -o -name 'libssl.so' \) | sort | head -n 200 >&2
             exit 1
           fi
           printf '%s\n' "${apex_files[@]}" > artifacts/pine-art-hotupdate/apex-files.txt
           for file in "${apex_files[@]}"; do
             cp -f "$file" artifacts/pine-art-hotupdate/files/
           done
-          find android/out -type f \( -name 'libart.so' -o -name 'libartbase.so' -o -name 'libdexfile.so' -o -name 'libartpalette.so' -o -name 'libjavacrypto.so' \) | sort > artifacts/pine-art-hotupdate/runtime-libs.txt
+          find android/out -type f \( -name 'libart.so' -o -name 'libartbase.so' -o -name 'libdexfile.so' -o -name 'libartpalette.so' -o -name 'libjavacrypto.so' -o -name 'libcrypto.so' -o -name 'libssl.so' \) | sort > artifacts/pine-art-hotupdate/runtime-libs.txt
           {
             echo "# pine ART and Conscrypt hot update"
             echo
             echo "ROM baseline: pine Android 12 ART tag android-12.0.0_r32"
-            echo "Patch: RegisterDexFile DEX dump hook + libcore Java crypto dump hook + Conscrypt TLS/provider crypto dump hook"
+            echo "Patch: RegisterDexFile DEX dump hook + libcore Java crypto dump hook + Conscrypt TLS/provider crypto dump hook + BoringSSL native crypto dump hook"
             echo "Crypto dump output: /data/temp/pine-crypto-dumps/<package>/java-crypto.log"
             echo "Conscrypt dump output: /data/temp/pine-crypto-dumps/<package>/conscrypt-crypto.log"
+            echo "BoringSSL dump output: /data/temp/pine-crypto-dumps/<package>/boringssl-crypto.log"
             echo "Crypto dump switch: create /data/temp/pine-crypto-dump.enable; optional package filter in /data/temp/pine-crypto-dump.pkg"
             echo
             echo "Generated files:"
@@ -277,6 +288,7 @@ jobs:
             pine-art-rom-applied.diff
             pine-libcore-crypto-dump-applied.diff
             pine-conscrypt-crypto-dump-applied.diff
+            pine-boringssl-crypto-dump-applied.diff
 
       - name: Upload ART hot update artifact
         uses: actions/upload-artifact@v4

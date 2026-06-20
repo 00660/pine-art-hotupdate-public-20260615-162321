@@ -1,0 +1,546 @@
+diff --git a/src/crypto/fipsmodule/cipher/cipher.c b/src/crypto/fipsmodule/cipher/cipher.c
+index c50c6c5..3debb9e 100644
+--- a/src/crypto/fipsmodule/cipher/cipher.c
++++ b/src/crypto/fipsmodule/cipher/cipher.c
+@@ -64,8 +64,50 @@
+ #include <openssl/nid.h>
+ 
+ #include "internal.h"
++#include "../pine_boringssl_dump.h"
+ #include "../../internal.h"
+ 
++static void pine_boringssl_dump_cipher_init(const EVP_CIPHER_CTX *ctx,
++                                            const uint8_t *key,
++                                            const uint8_t *iv) {
++  if (ctx == NULL || ctx->cipher == NULL) {
++    return;
++  }
++  char extra[256];
++  snprintf(extra, sizeof(extra),
++           "op=init\nenc=%d\ncipher_nid=%d\ncipher_key_len=%u\n"
++           "cipher_iv_len=%u\ncipher_block_size=%u\ncipher_mode=%u\n",
++           ctx->encrypt, EVP_CIPHER_CTX_nid(ctx),
++           EVP_CIPHER_CTX_key_length(ctx), EVP_CIPHER_CTX_iv_length(ctx),
++           EVP_CIPHER_CTX_block_size(ctx), EVP_CIPHER_CTX_mode(ctx));
++  pine_boringssl_dump_record("BoringSSL.EVP_CipherInit", extra, key,
++                             key == NULL ? 0 : EVP_CIPHER_CTX_key_length(ctx),
++                             iv,
++                             iv == NULL ? 0 : EVP_CIPHER_CTX_iv_length(ctx),
++                             NULL, 0, NULL, 0);
++}
++
++static void pine_boringssl_dump_cipher_data(const char *event,
++                                            const EVP_CIPHER_CTX *ctx,
++                                            const uint8_t *input,
++                                            int input_len,
++                                            const uint8_t *output,
++                                            int output_len) {
++  if (ctx == NULL || ctx->cipher == NULL) {
++    return;
++  }
++  char extra[256];
++  snprintf(extra, sizeof(extra),
++           "op=data\nenc=%d\ncipher_nid=%d\ncipher_key_len=%u\n"
++           "cipher_iv_len=%u\ncipher_block_size=%u\ncipher_mode=%u\n",
++           ctx->encrypt, EVP_CIPHER_CTX_nid(ctx),
++           EVP_CIPHER_CTX_key_length(ctx), EVP_CIPHER_CTX_iv_length(ctx),
++           EVP_CIPHER_CTX_block_size(ctx), EVP_CIPHER_CTX_mode(ctx));
++  pine_boringssl_dump_record(event, extra, NULL, 0, NULL, 0, input,
++                             input_len <= 0 ? 0 : (size_t)input_len, output,
++                             output_len <= 0 ? 0 : (size_t)output_len);
++}
++
+ 
+ void EVP_CIPHER_CTX_init(EVP_CIPHER_CTX *ctx) {
+   OPENSSL_memset(ctx, 0, sizeof(EVP_CIPHER_CTX));
+@@ -225,6 +267,7 @@ int EVP_CipherInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *cipher,
+   ctx->buf_len = 0;
+   ctx->final_used = 0;
+   ctx->block_mask = ctx->cipher->block_size - 1;
++  pine_boringssl_dump_cipher_init(ctx, key, iv);
+   return 1;
+ }
+ 
+@@ -241,6 +284,9 @@ int EVP_DecryptInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *cipher,
+ int EVP_EncryptUpdate(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len,
+                       const uint8_t *in, int in_len) {
+   int i, j, bl;
++  const uint8_t *pine_in = in;
++  uint8_t *pine_out = out;
++  int pine_in_len = in_len;
+ 
+   if (ctx->cipher->flags & EVP_CIPH_FLAG_CUSTOM_CIPHER) {
+     i = ctx->cipher->cipher(ctx, out, in, in_len);
+@@ -249,6 +295,8 @@ int EVP_EncryptUpdate(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len,
+     } else {
+       *out_len = i;
+     }
++    pine_boringssl_dump_cipher_data("BoringSSL.EVP_EncryptUpdate", ctx,
++                                    pine_in, pine_in_len, pine_out, *out_len);
+     return 1;
+   }
+ 
+@@ -260,6 +308,9 @@ int EVP_EncryptUpdate(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len,
+   if (ctx->buf_len == 0 && (in_len & ctx->block_mask) == 0) {
+     if (ctx->cipher->cipher(ctx, out, in, in_len)) {
+       *out_len = in_len;
++      pine_boringssl_dump_cipher_data("BoringSSL.EVP_EncryptUpdate", ctx,
++                                      pine_in, pine_in_len, pine_out,
++                                      *out_len);
+       return 1;
+     } else {
+       *out_len = 0;
+@@ -275,6 +326,9 @@ int EVP_EncryptUpdate(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len,
+       OPENSSL_memcpy(&ctx->buf[i], in, in_len);
+       ctx->buf_len += in_len;
+       *out_len = 0;
++      pine_boringssl_dump_cipher_data("BoringSSL.EVP_EncryptUpdate", ctx,
++                                      pine_in, pine_in_len, pine_out,
++                                      *out_len);
+       return 1;
+     } else {
+       j = bl - i;
+@@ -304,10 +358,13 @@ int EVP_EncryptUpdate(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len,
+     OPENSSL_memcpy(ctx->buf, &in[in_len], i);
+   }
+   ctx->buf_len = i;
++  pine_boringssl_dump_cipher_data("BoringSSL.EVP_EncryptUpdate", ctx, pine_in,
++                                  pine_in_len, pine_out, *out_len);
+   return 1;
+ }
+ 
+ int EVP_EncryptFinal_ex(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len) {
++  uint8_t *pine_out = out;
+   int n, ret;
+   unsigned int i, b, bl;
+ 
+@@ -318,6 +375,8 @@ int EVP_EncryptFinal_ex(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len) {
+     } else {
+       *out_len = ret;
+     }
++    pine_boringssl_dump_cipher_data("BoringSSL.EVP_EncryptFinal", ctx, NULL, 0,
++                                    pine_out, *out_len);
+     return 1;
+   }
+ 
+@@ -325,6 +384,8 @@ int EVP_EncryptFinal_ex(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len) {
+   assert(b <= sizeof(ctx->buf));
+   if (b == 1) {
+     *out_len = 0;
++    pine_boringssl_dump_cipher_data("BoringSSL.EVP_EncryptFinal", ctx, NULL, 0,
++                                    pine_out, *out_len);
+     return 1;
+   }
+ 
+@@ -335,6 +396,8 @@ int EVP_EncryptFinal_ex(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len) {
+       return 0;
+     }
+     *out_len = 0;
++    pine_boringssl_dump_cipher_data("BoringSSL.EVP_EncryptFinal", ctx, NULL, 0,
++                                    pine_out, *out_len);
+     return 1;
+   }
+ 
+@@ -346,6 +409,8 @@ int EVP_EncryptFinal_ex(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len) {
+ 
+   if (ret) {
+     *out_len = b;
++    pine_boringssl_dump_cipher_data("BoringSSL.EVP_EncryptFinal", ctx, NULL, 0,
++                                    pine_out, *out_len);
+   }
+ 
+   return ret;
+@@ -353,6 +418,9 @@ int EVP_EncryptFinal_ex(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len) {
+ 
+ int EVP_DecryptUpdate(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len,
+                       const uint8_t *in, int in_len) {
++  const uint8_t *pine_in = in;
++  uint8_t *pine_out = out;
++  int pine_in_len = in_len;
+   int fix_len;
+   unsigned int b;
+ 
+@@ -364,6 +432,8 @@ int EVP_DecryptUpdate(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len,
+     } else {
+       *out_len = r;
+     }
++    pine_boringssl_dump_cipher_data("BoringSSL.EVP_DecryptUpdate", ctx,
++                                    pine_in, pine_in_len, pine_out, *out_len);
+     return 1;
+   }
+ 
+@@ -373,7 +443,13 @@ int EVP_DecryptUpdate(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len,
+   }
+ 
+   if (ctx->flags & EVP_CIPH_NO_PADDING) {
+-    return EVP_EncryptUpdate(ctx, out, out_len, in, in_len);
++    int ret = EVP_EncryptUpdate(ctx, out, out_len, in, in_len);
++    if (ret) {
++      pine_boringssl_dump_cipher_data("BoringSSL.EVP_DecryptUpdate", ctx,
++                                      pine_in, pine_in_len, pine_out,
++                                      *out_len);
++    }
++    return ret;
+   }
+ 
+   b = ctx->cipher->block_size;
+@@ -405,10 +481,13 @@ int EVP_DecryptUpdate(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len,
+     *out_len += b;
+   }
+ 
++  pine_boringssl_dump_cipher_data("BoringSSL.EVP_DecryptUpdate", ctx, pine_in,
++                                  pine_in_len, pine_out, *out_len);
+   return 1;
+ }
+ 
+ int EVP_DecryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *out_len) {
++  uint8_t *pine_out = out;
+   int i, n;
+   unsigned int b;
+   *out_len = 0;
+@@ -420,6 +499,8 @@ int EVP_DecryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *out_len) {
+     } else {
+       *out_len = i;
+     }
++    pine_boringssl_dump_cipher_data("BoringSSL.EVP_DecryptFinal", ctx, NULL, 0,
++                                    pine_out, *out_len);
+     return 1;
+   }
+ 
+@@ -430,6 +511,8 @@ int EVP_DecryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *out_len) {
+       return 0;
+     }
+     *out_len = 0;
++    pine_boringssl_dump_cipher_data("BoringSSL.EVP_DecryptFinal", ctx, NULL, 0,
++                                    pine_out, *out_len);
+     return 1;
+   }
+ 
+@@ -464,6 +547,8 @@ int EVP_DecryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *out_len) {
+     *out_len = 0;
+   }
+ 
++  pine_boringssl_dump_cipher_data("BoringSSL.EVP_DecryptFinal", ctx, NULL, 0,
++                                  pine_out, *out_len);
+   return 1;
+ }
+ 
+diff --git a/src/crypto/fipsmodule/digest/md32_common.h b/src/crypto/fipsmodule/digest/md32_common.h
+index 07d39d9..69a4c53 100644
+--- a/src/crypto/fipsmodule/digest/md32_common.h
++++ b/src/crypto/fipsmodule/digest/md32_common.h
+@@ -50,12 +50,15 @@
+ 
+ #include <assert.h>
+ 
++#include "../pine_boringssl_dump.h"
+ #include "../../internal.h"
+ 
+ #if defined(__cplusplus)
+ extern "C" {
+ #endif
+ 
++#define PINE_BORINGSSL_STRINGIFY_INNER(x) #x
++#define PINE_BORINGSSL_STRINGIFY(x) PINE_BORINGSSL_STRINGIFY_INNER(x)
+ 
+ // This is a generic 32-bit "collector" for message digest algorithms. It
+ // collects input character stream into chunks of 32-bit values and invokes the
+@@ -181,6 +184,10 @@ int HASH_UPDATE(HASH_CTX *c, const void *data_, size_t len) {
+     return 1;
+   }
+ 
++  pine_boringssl_dump_record(
++      "BoringSSL." PINE_BORINGSSL_STRINGIFY(HASH_UPDATE), "op=digest\n",
++      NULL, 0, NULL, 0, data, len, NULL, 0);
++
+   uint32_t l = c->Nl + (((uint32_t)len) << 3);
+   if (l < c->Nl) {
+     // Handle carries.
+diff --git a/src/crypto/fipsmodule/hmac/hmac.c b/src/crypto/fipsmodule/hmac/hmac.c
+index fb57bf2..8e02dc9 100644
+--- a/src/crypto/fipsmodule/hmac/hmac.c
++++ b/src/crypto/fipsmodule/hmac/hmac.c
+@@ -62,8 +62,21 @@
+ #include <openssl/digest.h>
+ #include <openssl/mem.h>
+ 
++#include "../pine_boringssl_dump.h"
+ #include "../../internal.h"
+ 
++static void pine_boringssl_dump_hmac(const char *event, const HMAC_CTX *ctx,
++                                     const uint8_t *key, size_t key_len,
++                                     const uint8_t *input, size_t input_len,
++                                     const uint8_t *output,
++                                     size_t output_len) {
++  char extra[128];
++  snprintf(extra, sizeof(extra), "op=hmac\ndigest_nid=%d\n",
++           ctx != NULL && ctx->md != NULL ? EVP_MD_type(ctx->md) : 0);
++  pine_boringssl_dump_record(event, extra, key, key_len, NULL, 0, input,
++                             input_len, output, output_len);
++}
++
+ 
+ uint8_t *HMAC(const EVP_MD *evp_md, const void *key, size_t key_len,
+               const uint8_t *data, size_t data_len, uint8_t *out,
+@@ -171,11 +184,18 @@ int HMAC_Init_ex(HMAC_CTX *ctx, const void *key, size_t key_len,
+     return 0;
+   }
+ 
++  pine_boringssl_dump_hmac("BoringSSL.HMAC_Init", ctx, key, key_len, NULL, 0,
++                           NULL, 0);
+   return 1;
+ }
+ 
+ int HMAC_Update(HMAC_CTX *ctx, const uint8_t *data, size_t data_len) {
+-  return EVP_DigestUpdate(&ctx->md_ctx, data, data_len);
++  int ret = EVP_DigestUpdate(&ctx->md_ctx, data, data_len);
++  if (ret) {
++    pine_boringssl_dump_hmac("BoringSSL.HMAC_Update", ctx, NULL, 0, data,
++                             data_len, NULL, 0);
++  }
++  return ret;
+ }
+ 
+ int HMAC_Final(HMAC_CTX *ctx, uint8_t *out, unsigned int *out_len) {
+@@ -192,6 +212,8 @@ int HMAC_Final(HMAC_CTX *ctx, uint8_t *out, unsigned int *out_len) {
+     return 0;
+   }
+ 
++  pine_boringssl_dump_hmac("BoringSSL.HMAC_Final", ctx, NULL, 0, NULL, 0, out,
++                           out_len == NULL ? HMAC_size(ctx) : *out_len);
+   return 1;
+ }
+ 
+diff --git a/src/crypto/fipsmodule/pine_boringssl_dump.h b/src/crypto/fipsmodule/pine_boringssl_dump.h
+new file mode 100644
+index 0000000..3b1fdf2
+--- /dev/null
++++ b/src/crypto/fipsmodule/pine_boringssl_dump.h
+@@ -0,0 +1,205 @@
++#ifndef OPENSSL_HEADER_PINE_BORINGSSL_DUMP_H
++#define OPENSSL_HEADER_PINE_BORINGSSL_DUMP_H
++
++#include <fcntl.h>
++#include <stdarg.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <string.h>
++#include <sys/stat.h>
++#include <sys/time.h>
++#include <unistd.h>
++
++#ifndef O_CLOEXEC
++#define O_CLOEXEC 0
++#endif
++
++#define PINE_BORINGSSL_DUMP_BASE "/data/temp/pine-crypto-dumps"
++#define PINE_BORINGSSL_DUMP_ENABLE "/data/temp/pine-crypto-dump.enable"
++#define PINE_BORINGSSL_DUMP_PKG "/data/temp/pine-crypto-dump.pkg"
++#define PINE_BORINGSSL_DUMP_MAX 4096
++
++static void pine_boringssl_write_all(int fd, const char *data, size_t len) {
++  while (len > 0) {
++    ssize_t n = write(fd, data, len);
++    if (n <= 0) {
++      return;
++    }
++    data += n;
++    len -= (size_t)n;
++  }
++}
++
++static void pine_boringssl_write_str(int fd, const char *s) {
++  if (s != NULL) {
++    pine_boringssl_write_all(fd, s, strlen(s));
++  }
++}
++
++static void pine_boringssl_writef(int fd, const char *fmt, ...) {
++  char buf[512];
++  va_list ap;
++  va_start(ap, fmt);
++  int n = vsnprintf(buf, sizeof(buf), fmt, ap);
++  va_end(ap);
++  if (n <= 0) {
++    return;
++  }
++  size_t len = (size_t)n;
++  if (len >= sizeof(buf)) {
++    len = sizeof(buf) - 1;
++  }
++  pine_boringssl_write_all(fd, buf, len);
++}
++
++static void pine_boringssl_trim(char *s) {
++  size_t len = strlen(s);
++  while (len > 0) {
++    char c = s[len - 1];
++    if (c != '\n' && c != '\r' && c != '\t' && c != ' ') {
++      break;
++    }
++    s[--len] = 0;
++  }
++}
++
++static int pine_boringssl_package(char *pkg, size_t pkg_len) {
++  int fd = open("/proc/self/cmdline", O_RDONLY | O_CLOEXEC);
++  if (fd < 0) {
++    return 0;
++  }
++  char buf[256];
++  ssize_t n = read(fd, buf, sizeof(buf) - 1);
++  close(fd);
++  if (n <= 0) {
++    return 0;
++  }
++  buf[n] = 0;
++  size_t len = 0;
++  while (len < (size_t)n && buf[len] != 0 && buf[len] != ':') {
++    len++;
++  }
++  if (len == 0 || len >= pkg_len) {
++    return 0;
++  }
++  for (size_t i = 0; i < len; i++) {
++    char c = buf[i];
++    int ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
++             (c >= '0' && c <= '9') || c == '.' || c == '_';
++    if (!ok) {
++      return 0;
++    }
++    pkg[i] = c;
++  }
++  pkg[len] = 0;
++  return 1;
++}
++
++static int pine_boringssl_enabled(char *pkg, size_t pkg_len) {
++  if (access(PINE_BORINGSSL_DUMP_ENABLE, F_OK) != 0 ||
++      !pine_boringssl_package(pkg, pkg_len)) {
++    return 0;
++  }
++
++  int fd = open(PINE_BORINGSSL_DUMP_PKG, O_RDONLY | O_CLOEXEC);
++  if (fd >= 0) {
++    char target[256];
++    ssize_t n = read(fd, target, sizeof(target) - 1);
++    close(fd);
++    if (n > 0) {
++      target[n] = 0;
++      pine_boringssl_trim(target);
++      if (target[0] != 0 && strcmp(target, pkg) != 0) {
++        return 0;
++      }
++    }
++  }
++  return 1;
++}
++
++static int pine_boringssl_open_log(const char *pkg) {
++  mkdir(PINE_BORINGSSL_DUMP_BASE, 0777);
++  char dir[512];
++  int n = snprintf(dir, sizeof(dir), "%s/%s", PINE_BORINGSSL_DUMP_BASE, pkg);
++  if (n <= 0 || (size_t)n >= sizeof(dir)) {
++    return -1;
++  }
++  mkdir(dir, 0777);
++
++  char path[640];
++  n = snprintf(path, sizeof(path), "%s/boringssl-crypto.log", dir);
++  if (n <= 0 || (size_t)n >= sizeof(path)) {
++    return -1;
++  }
++  return open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
++}
++
++static long long pine_boringssl_time_ms(void) {
++  struct timeval tv;
++  if (gettimeofday(&tv, NULL) != 0) {
++    return 0;
++  }
++  return (long long)tv.tv_sec * 1000LL + (long long)(tv.tv_usec / 1000LL);
++}
++
++static void pine_boringssl_hex_field(int fd, const char *name,
++                                     const uint8_t *data, size_t len) {
++  if (data == NULL) {
++    pine_boringssl_writef(fd, "%s_len=-1\n", name);
++    return;
++  }
++  pine_boringssl_writef(fd, "%s_len=%zu\n%s_hex=", name, len, name);
++  static const char kHex[] = "0123456789abcdef";
++  char out[512];
++  size_t limit = len;
++  if (limit > PINE_BORINGSSL_DUMP_MAX) {
++    limit = PINE_BORINGSSL_DUMP_MAX;
++  }
++  size_t used = 0;
++  for (size_t i = 0; i < limit; i++) {
++    uint8_t v = data[i];
++    out[used++] = kHex[v >> 4];
++    out[used++] = kHex[v & 15];
++    if (used == sizeof(out)) {
++      pine_boringssl_write_all(fd, out, used);
++      used = 0;
++    }
++  }
++  if (used != 0) {
++    pine_boringssl_write_all(fd, out, used);
++  }
++  if (limit < len) {
++    pine_boringssl_writef(fd, "...truncated_%zu_bytes", len - limit);
++  }
++  pine_boringssl_write_str(fd, "\n");
++}
++
++static void pine_boringssl_dump_record(const char *event, const char *extra,
++                                       const uint8_t *key, size_t key_len,
++                                       const uint8_t *iv, size_t iv_len,
++                                       const uint8_t *input, size_t input_len,
++                                       const uint8_t *output,
++                                       size_t output_len) {
++  char pkg[256];
++  if (!pine_boringssl_enabled(pkg, sizeof(pkg))) {
++    return;
++  }
++  int fd = pine_boringssl_open_log(pkg);
++  if (fd < 0) {
++    return;
++  }
++  pine_boringssl_write_str(fd, "---\n");
++  pine_boringssl_writef(fd, "event=%s\n", event == NULL ? "BoringSSL" : event);
++  pine_boringssl_writef(fd, "time_ms=%lld\n", pine_boringssl_time_ms());
++  pine_boringssl_writef(fd, "package=%s\n", pkg);
++  pine_boringssl_writef(fd, "pid=%d\n", getpid());
++  pine_boringssl_write_str(fd, "layer=boringssl\n");
++  pine_boringssl_write_str(fd, extra);
++  pine_boringssl_hex_field(fd, "key", key, key_len);
++  pine_boringssl_hex_field(fd, "iv", iv, iv_len);
++  pine_boringssl_hex_field(fd, "input", input, input_len);
++  pine_boringssl_hex_field(fd, "output", output, output_len);
++  close(fd);
++}
++
++#endif  // OPENSSL_HEADER_PINE_BORINGSSL_DUMP_H
+diff --git a/src/crypto/fipsmodule/sha/sha512.c b/src/crypto/fipsmodule/sha/sha512.c
+index fd02574..0c2ffd2 100644
+--- a/src/crypto/fipsmodule/sha/sha512.c
++++ b/src/crypto/fipsmodule/sha/sha512.c
+@@ -61,6 +61,7 @@
+ #include <openssl/mem.h>
+ 
+ #include "internal.h"
++#include "../pine_boringssl_dump.h"
+ #include "../../internal.h"
+ 
+ 
+@@ -192,6 +193,9 @@ int SHA512_Update(SHA512_CTX *c, const void *in_data, size_t len) {
+     return 1;
+   }
+ 
++  pine_boringssl_dump_record("BoringSSL.SHA512_Update", "op=digest\n", NULL,
++                             0, NULL, 0, data, len, NULL, 0);
++
+   l = (c->Nl + (((uint64_t)len) << 3)) & UINT64_C(0xffffffffffffffff);
+   if (l < c->Nl) {
+     c->Nh++;

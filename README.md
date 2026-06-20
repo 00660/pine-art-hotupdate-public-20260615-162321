@@ -6,6 +6,7 @@ Temporary public GitHub Actions builder for Redmi 7A pine ART hot update.
 - ART patch: devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch
 - Java crypto patch: devices/pine/patches/art/android-12.0.0_r32/pine-libcore-crypto-dump.patch
 - Conscrypt crypto patch: devices/pine/patches/art/android-12.0.0_r32/pine-conscrypt-crypto-dump.patch
+- BoringSSL native crypto patch: devices/pine/patches/art/android-12.0.0_r32/pine-boringssl-crypto-dump.patch
 - Workflow: .github/workflows/build-pine-art-rom.yml
 - Current hosted-runner strategy: build `com.android.art com.android.conscrypt` with `aosp_arm64-user`, aggressively free disk, keep 8G extra swap, drop `android/.repo` before build, and use diagnostics to track resource pressure. True resume-from-failure requires a self-hosted runner with persistent `android/out`.
 
@@ -30,6 +31,15 @@ The Conscrypt APEX patch adds second-layer instrumentation for:
 - `ConscryptFileDescriptorSocket` and `ConscryptEngineSocket`: TLS plaintext read/write paths
 
 Conscrypt output is appended to `/data/temp/pine-crypto-dumps/<package>/conscrypt-crypto.log`.
+
+The BoringSSL native patch adds third-layer instrumentation for:
+
+- `EVP_CipherInit_ex`, `EVP_EncryptUpdate`, `EVP_DecryptUpdate`
+- `EVP_EncryptFinal_ex`, `EVP_DecryptFinal_ex`
+- `HMAC_Init_ex`, `HMAC_Update`, `HMAC_Final`
+- `MD5_Update`, `SHA1_Update`, `SHA256_Update`, `SHA512_Update`
+
+BoringSSL output is appended to `/data/temp/pine-crypto-dumps/<package>/boringssl-crypto.log`.
 
 Enable it on device:
 

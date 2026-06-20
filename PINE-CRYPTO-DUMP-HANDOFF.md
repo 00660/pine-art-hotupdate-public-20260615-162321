@@ -2,12 +2,13 @@
 
 ## Scope
 
-This repository is the pine ART APEX builder that already produced successful ART artifacts. The new work adds Java crypto dump instrumentation to the same `com.android.art` GitHub Actions build, not a separate local Android build.
+This repository is the pine ART and Conscrypt APEX builder that already produced successful ART artifacts. The new work keeps Java crypto dump instrumentation in `com.android.art` and adds second-layer Conscrypt instrumentation in `com.android.conscrypt`, not a target APK injection path.
 
 ## Changed files
 
 - `.github/workflows/build-pine-art-rom.yml`: applies both the existing ART DEX dump patch and the new libcore crypto dump patch, then uploads `pine-libcore-crypto-dump-applied.diff`.
 - `devices/pine/patches/art/android-12.0.0_r32/pine-libcore-crypto-dump.patch`: patches Android 12 `libcore` Java crypto classes.
+- `devices/pine/patches/art/android-12.0.0_r32/pine-conscrypt-crypto-dump.patch`: patches Android 12 Conscrypt repackaged provider/TLS classes.
 - `README.md`: documents runtime switches and output path.
 
 ## Runtime behavior
@@ -16,6 +17,7 @@ The generated ART APEX logs Java crypto material to:
 
 ```text
 /data/temp/pine-crypto-dumps/<package>/java-crypto.log
+/data/temp/pine-crypto-dumps/<package>/conscrypt-crypto.log
 ```
 
 Enable globally:
@@ -44,6 +46,11 @@ adb shell su -c "rm -f /data/temp/pine-crypto-dump.enable /data/temp/pine-crypto
 - `MessageDigest.update`, `MessageDigest.digest`
 - `SecretKeySpec` constructors and `getEncoded`
 - `IvParameterSpec` constructors and `getIV`
+- Conscrypt `OpenSSLEvpCipher` EVP cipher init/update/final
+- Conscrypt `OpenSSLAeadCipher` AEAD init/update/AAD/final
+- Conscrypt `OpenSSLMac` HMAC init/update/final
+- Conscrypt `OpenSSLMessageDigestJDK` digest update/final
+- Conscrypt socket plaintext read/write paths
 
 ## Backup
 

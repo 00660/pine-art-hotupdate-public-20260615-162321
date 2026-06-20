@@ -67,14 +67,15 @@ for apex in "${apex_files[@]}"; do
     echo "  - $(basename "$apex") ($size_mb)"
 done
 
-# Create /data/temp directory first
+# Create /data/temp directories first
 echo
-echo "Creating /data/temp/pine-art-dumps directory..."
-adb -s "$DEVICE_SERIAL" shell "$ROOT_SU -c 'mkdir -p /data/temp/pine-art-dumps'"
+echo "Creating /data/temp dump directories..."
+adb -s "$DEVICE_SERIAL" shell "$ROOT_SU -c 'mkdir -p /data/temp/pine-art-dumps /data/temp/pine-crypto-dumps'"
 adb -s "$DEVICE_SERIAL" shell "$ROOT_SU -c 'chmod 0777 /data/temp'"
 adb -s "$DEVICE_SERIAL" shell "$ROOT_SU -c 'chmod 0777 /data/temp/pine-art-dumps'"
+adb -s "$DEVICE_SERIAL" shell "$ROOT_SU -c 'chmod 0777 /data/temp/pine-crypto-dumps'"
 
-adb -s "$DEVICE_SERIAL" shell "$ROOT_SU -c 'ls -ld /data/temp /data/temp/pine-art-dumps'"
+adb -s "$DEVICE_SERIAL" shell "$ROOT_SU -c 'ls -ld /data/temp /data/temp/pine-art-dumps /data/temp/pine-crypto-dumps'"
 
 # Confirm installation
 echo
@@ -122,6 +123,8 @@ echo
 echo "Enabling DEX dump for testing..."
 adb -s "$DEVICE_SERIAL" shell setprop persist.sys.pine_art_dexdump true
 echo "  persist.sys.pine_art_dexdump = true"
+adb -s "$DEVICE_SERIAL" shell "$ROOT_SU -c 'touch /data/temp/pine-crypto-dump.enable'"
+echo "  /data/temp/pine-crypto-dump.enable created"
 
 # Installation summary
 echo
@@ -135,6 +138,7 @@ echo "  2. Reconnect: adb connect $DEVICE_SERIAL"
 echo "  3. Test dump:"
 echo "       adb shell monkey -p com.android.settings 1"
 echo "       adb shell su -c 'ls -lR /data/temp/pine-art-dumps/'"
+echo "       adb shell su -c 'find /data/temp/pine-crypto-dumps -type f -maxdepth 3 -print'"
 echo "  4. Check logs:"
 echo "       adb logcat -d | grep 'pine ART dexdump'"
 echo

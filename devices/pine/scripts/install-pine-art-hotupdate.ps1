@@ -69,14 +69,15 @@ foreach ($apex in $apexFiles) {
     Write-Host "  - $($apex.Name) ($sizeMB MB)" -ForegroundColor White
 }
 
-# Create /data/temp directory first
+# Create /data/temp directories first
 Write-Host ""
-Write-Host "Creating /data/temp/pine-art-dumps directory..." -ForegroundColor Yellow
-adb -s $DeviceSerial shell "$RootSu -c 'mkdir -p /data/temp/pine-art-dumps'"
+Write-Host "Creating /data/temp dump directories..." -ForegroundColor Yellow
+adb -s $DeviceSerial shell "$RootSu -c 'mkdir -p /data/temp/pine-art-dumps /data/temp/pine-crypto-dumps'"
 adb -s $DeviceSerial shell "$RootSu -c 'chmod 0777 /data/temp'"
 adb -s $DeviceSerial shell "$RootSu -c 'chmod 0777 /data/temp/pine-art-dumps'"
+adb -s $DeviceSerial shell "$RootSu -c 'chmod 0777 /data/temp/pine-crypto-dumps'"
 
-$tempCheck = adb -s $DeviceSerial shell "$RootSu -c 'ls -ld /data/temp /data/temp/pine-art-dumps'" 2>&1
+$tempCheck = adb -s $DeviceSerial shell "$RootSu -c 'ls -ld /data/temp /data/temp/pine-art-dumps /data/temp/pine-crypto-dumps'" 2>&1
 Write-Host $tempCheck -ForegroundColor Gray
 
 # Confirm installation
@@ -125,6 +126,8 @@ Write-Host ""
 Write-Host "Enabling DEX dump for testing..." -ForegroundColor Yellow
 adb -s $DeviceSerial shell setprop persist.sys.pine_art_dexdump true
 Write-Host "  persist.sys.pine_art_dexdump = true" -ForegroundColor Green
+adb -s $DeviceSerial shell "$RootSu -c 'touch /data/temp/pine-crypto-dump.enable'"
+Write-Host "  /data/temp/pine-crypto-dump.enable created" -ForegroundColor Green
 
 # Installation summary
 Write-Host ""
@@ -138,6 +141,7 @@ Write-Host "  2. Reconnect: adb connect $DeviceSerial" -ForegroundColor White
 Write-Host "  3. Test dump:" -ForegroundColor White
 Write-Host "       adb shell monkey -p com.android.settings 1" -ForegroundColor Gray
 Write-Host "       adb shell su -c 'ls -lR /data/temp/pine-art-dumps/'" -ForegroundColor Gray
+Write-Host "       adb shell su -c 'find /data/temp/pine-crypto-dumps -maxdepth 3 -type f -print'" -ForegroundColor Gray
 Write-Host "  4. Check logs:" -ForegroundColor White
 Write-Host "       adb logcat -d | grep 'pine ART dexdump'" -ForegroundColor Gray
 Write-Host ""

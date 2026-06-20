@@ -1,0 +1,444 @@
+diff --git a/repackaged/common/src/main/java/com/android/org/conscrypt/ConscryptEngineSocket.java b/repackaged/common/src/main/java/com/android/org/conscrypt/ConscryptEngineSocket.java
+index 69a341f..ca803d9 100644
+--- a/repackaged/common/src/main/java/com/android/org/conscrypt/ConscryptEngineSocket.java
++++ b/repackaged/common/src/main/java/com/android/org/conscrypt/ConscryptEngineSocket.java
+@@ -669,6 +669,8 @@ class ConscryptEngineSocket extends OpenSSLSocketImpl implements SSLParametersIm
+ 
+             // Need to loop through at least once to enable handshaking where no application
+             // bytes are processed.
++            PineConscryptDump.bufferData("Conscrypt.EngineSocket.write", "TLS", buffer,
++                    buffer.position(), buffer.remaining(), null, 0, 0);
+             int len = buffer.remaining();
+             SSLEngineResult engineResult;
+             do {
+@@ -844,6 +846,7 @@ class ConscryptEngineSocket extends OpenSSLSocketImpl implements SSLParametersIm
+                 if (fromEngine.remaining() > 0) {
+                     int readFromEngine = Math.min(fromEngine.remaining(), len);
+                     fromEngine.get(b, off, readFromEngine);
++                    PineConscryptDump.tls("Conscrypt.EngineSocket.read", b, off, readFromEngine);
+                     return readFromEngine;
+                 }
+ 
+diff --git a/repackaged/common/src/main/java/com/android/org/conscrypt/ConscryptFileDescriptorSocket.java b/repackaged/common/src/main/java/com/android/org/conscrypt/ConscryptFileDescriptorSocket.java
+index 67a1ede..4a1cdd3 100644
+--- a/repackaged/common/src/main/java/com/android/org/conscrypt/ConscryptFileDescriptorSocket.java
++++ b/repackaged/common/src/main/java/com/android/org/conscrypt/ConscryptFileDescriptorSocket.java
+@@ -575,6 +575,8 @@ class ConscryptFileDescriptorSocket extends OpenSSLSocketImpl
+                             throw new SocketException("socket is closed");
+                         }
+                     }
++                } else if (ret > 0) {
++                    PineConscryptDump.tls("Conscrypt.TLS.read", buf, offset, ret);
+                 }
+                 return ret;
+             }
+@@ -649,6 +651,7 @@ class ConscryptFileDescriptorSocket extends OpenSSLSocketImpl
+                     }
+                 }
+ 
++                PineConscryptDump.tls("Conscrypt.TLS.write", buf, offset, byteCount);
+                 ssl.write(Platform.getFileDescriptor(socket), buf, offset, byteCount,
+                         writeTimeoutMilliseconds);
+ 
+diff --git a/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLAeadCipher.java b/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLAeadCipher.java
+index 383ba4e..c463980 100644
+--- a/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLAeadCipher.java
++++ b/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLAeadCipher.java
+@@ -210,6 +210,8 @@ public abstract class OpenSSLAeadCipher extends OpenSSLCipher {
+         mustInitialize = false;
+         this.iv = iv;
+         reset();
++        PineConscryptDump.init("Conscrypt.EVP_AEAD.Init", pineCipherName(),
++                isEncrypting(), encodedKey, iv);
+     }
+ 
+     void checkSupportedTagLength(int tagLenBits)
+@@ -301,6 +303,8 @@ public abstract class OpenSSLAeadCipher extends OpenSSLCipher {
+             System.arraycopy(input, inputOffset, buf, this.bufCount, inputLen);
+             this.bufCount += inputLen;
+         }
++        PineConscryptDump.data("Conscrypt.EVP_AEAD.update", pineCipherName(), input,
++                inputOffset, inputLen, null, 0, 0);
+         return 0;
+     }
+ 
+@@ -336,6 +340,9 @@ public abstract class OpenSSLAeadCipher extends OpenSSLCipher {
+             throws ShortBufferException, IllegalBlockSizeException, BadPaddingException {
+         checkInitialization();
+         final int bytesWritten;
++        final int inputPosition = input.position();
++        final int inputLength = input.remaining();
++        final int outputPosition = output.position();
+         try {
+             if (isEncrypting()) {
+                 bytesWritten = NativeCrypto.EVP_AEAD_CTX_seal_buf(
+@@ -351,6 +358,8 @@ public abstract class OpenSSLAeadCipher extends OpenSSLCipher {
+         if (isEncrypting()) {
+             mustInitialize = true;
+         }
++        PineConscryptDump.bufferData("Conscrypt.EVP_AEAD.final", pineCipherName(),
++                input, inputPosition, inputLength, output, outputPosition, bytesWritten);
+         return bytesWritten;
+     }
+ 
+@@ -359,6 +368,7 @@ public abstract class OpenSSLAeadCipher extends OpenSSLCipher {
+             throws ShortBufferException, IllegalBlockSizeException, BadPaddingException {
+         checkInitialization();
+         final int bytesWritten;
++        final int initialOutputOffset = outputOffset;
+         try {
+             if (isEncrypting()) {
+                 bytesWritten = NativeCrypto.EVP_AEAD_CTX_seal(evpAead, encodedKey,
+@@ -374,6 +384,8 @@ public abstract class OpenSSLAeadCipher extends OpenSSLCipher {
+         if (isEncrypting()) {
+             mustInitialize = true;
+         }
++        PineConscryptDump.data("Conscrypt.EVP_AEAD.final", pineCipherName(), buf, 0,
++                bufCount, output, initialOutputOffset, bytesWritten);
+         reset();
+         return bytesWritten;
+     }
+@@ -412,12 +424,16 @@ public abstract class OpenSSLAeadCipher extends OpenSSLCipher {
+             System.arraycopy(input, inputOffset, newaad, aad.length, inputLen);
+             aad = newaad;
+         }
++        PineConscryptDump.data("Conscrypt.EVP_AEAD.aad", pineCipherName(), input,
++                inputOffset, inputLen, null, 0, 0);
+     }
+ 
+     // Intentionally missing Override to compile on old versions of Android
+     @SuppressWarnings("MissingOverride")
+     protected void engineUpdateAAD(ByteBuffer buf) {
+         checkInitialization();
++        int inputPosition = buf.position();
++        int inputLen = buf.remaining();
+         if (aad == null) {
+             aad = new byte[buf.remaining()];
+             buf.get(aad);
+@@ -428,7 +444,13 @@ public abstract class OpenSSLAeadCipher extends OpenSSLCipher {
+             buf.get(newaad, aad.length, buf.remaining());
+             aad = newaad;
+         }
++        PineConscryptDump.bufferData("Conscrypt.EVP_AEAD.aad", pineCipherName(), buf,
++                inputPosition, inputLen, null, 0, 0);
+     }
+ 
+     abstract long getEVP_AEAD(int keyLength) throws InvalidKeyException;
++
++    private String pineCipherName() {
++        return getBaseCipherName() + "/" + mode + "/" + getPadding();
++    }
+ }
+diff --git a/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLEvpCipher.java b/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLEvpCipher.java
+index 765282d..9669a8e 100644
+--- a/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLEvpCipher.java
++++ b/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLEvpCipher.java
+@@ -110,6 +110,8 @@ public abstract class OpenSSLEvpCipher extends OpenSSLCipher {
+                 .EVP_CIPHER_CTX_set_padding(cipherCtx, getPadding() == Padding.PKCS5PADDING);
+         modeBlockSize = NativeCrypto.EVP_CIPHER_CTX_block_size(cipherCtx);
+         calledUpdate = false;
++        PineConscryptDump.init("Conscrypt.EVP_CipherInit", pineCipherName(),
++                isEncrypting(), encodedKey, iv);
+     }
+ 
+     @Override
+@@ -123,10 +125,13 @@ public abstract class OpenSSLEvpCipher extends OpenSSLCipher {
+                     "output buffer too small during update: " + bytesLeft + " < " + maximumLen);
+         }
+ 
+-        outputOffset += NativeCrypto.EVP_CipherUpdate(cipherCtx, output, outputOffset, input,
++        int bytesWritten = NativeCrypto.EVP_CipherUpdate(cipherCtx, output, outputOffset, input,
+                 inputOffset, inputLen);
++        outputOffset += bytesWritten;
+ 
+         calledUpdate = true;
++        PineConscryptDump.data("Conscrypt.EVP_CipherUpdate", pineCipherName(), input,
++                inputOffset, inputLen, output, intialOutputOffset, bytesWritten);
+ 
+         return outputOffset - intialOutputOffset;
+     }
+@@ -162,6 +167,8 @@ public abstract class OpenSSLEvpCipher extends OpenSSLCipher {
+         }
+         outputOffset += writtenBytes;
+ 
++        PineConscryptDump.data("Conscrypt.EVP_CipherFinal", pineCipherName(), null, 0, 0,
++                output, initialOutputOffset, writtenBytes);
+         reset();
+ 
+         return outputOffset - initialOutputOffset;
+@@ -202,6 +209,10 @@ public abstract class OpenSSLEvpCipher extends OpenSSLCipher {
+      */
+     abstract String getCipherName(int keySize, Mode mode);
+ 
++    private String pineCipherName() {
++        return getBaseCipherName() + "/" + mode + "/" + getPadding();
++    }
++
+     /**
+      * Reset this Cipher instance state to process a new chunk of data.
+      */
+diff --git a/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLMac.java b/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLMac.java
+index cca9721..118e51a 100644
+--- a/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLMac.java
++++ b/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLMac.java
+@@ -83,6 +83,7 @@ public abstract class OpenSSLMac extends MacSpi {
+         }
+ 
+         resetContext();
++        PineConscryptDump.key("Conscrypt.HMAC.init", getClass().getName(), keyBytes);
+     }
+ 
+     @Override
+@@ -124,6 +125,8 @@ public abstract class OpenSSLMac extends MacSpi {
+             throw new RuntimeException("Negative remaining amount");
+         }
+ 
++        PineConscryptDump.bufferData("Conscrypt.HMAC.updateDirect", getClass().getName(),
++                input, position, len, null, 0, 0);
+         updateDirect(ptr, len);
+         input.position(position + len);
+     }
+@@ -171,6 +174,8 @@ public abstract class OpenSSLMac extends MacSpi {
+         @Override
+         protected void engineUpdate(byte[] input, int offset, int len) {
+             final NativeRef.HMAC_CTX ctxLocal = ctx;
++            PineConscryptDump.data("Conscrypt.HMAC.update", getClass().getName(), input,
++                    offset, len, null, 0, 0);
+             NativeCrypto.HMAC_Update(ctxLocal, input, offset, len);
+         }
+ 
+@@ -183,7 +188,10 @@ public abstract class OpenSSLMac extends MacSpi {
+         @Override
+         protected byte[] doFinal() {
+             final NativeRef.HMAC_CTX ctxLocal = ctx;
+-            return NativeCrypto.HMAC_Final(ctxLocal);
++            byte[] result = NativeCrypto.HMAC_Final(ctxLocal);
++            PineConscryptDump.data("Conscrypt.HMAC.final", getClass().getName(), null, 0, 0,
++                    result, 0, result == null ? 0 : result.length);
++            return result;
+         }
+     }
+ 
+diff --git a/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLMessageDigestJDK.java b/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLMessageDigestJDK.java
+index 2e756b5..7bc86ea 100644
+--- a/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLMessageDigestJDK.java
++++ b/repackaged/common/src/main/java/com/android/org/conscrypt/OpenSSLMessageDigestJDK.java
+@@ -100,6 +100,8 @@ public class OpenSSLMessageDigestJDK extends MessageDigestSpi implements Cloneab
+     @Override
+     protected synchronized void engineUpdate(byte[] input, int offset, int len) {
+         ensureDigestInitializedInContext();
++        PineConscryptDump.data("Conscrypt.EVP_DigestUpdate", getClass().getName(), input,
++                offset, len, null, 0, 0);
+         NativeCrypto.EVP_DigestUpdate(ctx, input, offset, len);
+     }
+ 
+@@ -138,6 +140,8 @@ public class OpenSSLMessageDigestJDK extends MessageDigestSpi implements Cloneab
+         }
+ 
+         ensureDigestInitializedInContext();
++        PineConscryptDump.bufferData("Conscrypt.EVP_DigestUpdateDirect", getClass().getName(),
++                input, position, len, null, 0, 0);
+         NativeCrypto.EVP_DigestUpdateDirect(ctx, ptr, len);
+         input.position(position + len);
+     }
+@@ -147,6 +151,8 @@ public class OpenSSLMessageDigestJDK extends MessageDigestSpi implements Cloneab
+         ensureDigestInitializedInContext();
+         final byte[] result = new byte[size];
+         NativeCrypto.EVP_DigestFinal_ex(ctx, result, 0);
++        PineConscryptDump.data("Conscrypt.EVP_DigestFinal", getClass().getName(), null, 0, 0,
++                result, 0, result.length);
+ 
+         // Optimized reset path:
+         // 1. No need to wipe EVP_MD_CTX because EVP_DigestFinal_ex has already cleansed any
+diff --git a/repackaged/common/src/main/java/com/android/org/conscrypt/PineConscryptDump.java b/repackaged/common/src/main/java/com/android/org/conscrypt/PineConscryptDump.java
+new file mode 100644
+index 0000000..7a68efc
+--- /dev/null
++++ b/repackaged/common/src/main/java/com/android/org/conscrypt/PineConscryptDump.java
+@@ -0,0 +1,186 @@
++/* GENERATED SOURCE. DO NOT MODIFY. */
++/*
++ * Copyright (C) 2026 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ */
++
++package com.android.org.conscrypt;
++
++import java.nio.ByteBuffer;
++import java.nio.charset.StandardCharsets;
++
++final class PineConscryptDump {
++    private static final String BASE = "/data/temp/pine-crypto-dumps";
++    private static final String ENABLE = "/data/temp/pine-crypto-dump.enable";
++    private static final String PKG = "/data/temp/pine-crypto-dump.pkg";
++    private static final int MAX = 4096;
++
++    private PineConscryptDump() {}
++
++    static void init(String event, String algorithm, boolean encrypting, byte[] key, byte[] iv) {
++        try {
++            StringBuilder b = start(event);
++            if (b == null) return;
++            b.append("algorithm=").append(clean(algorithm)).append('\n');
++            b.append("op=").append(encrypting ? "encrypt" : "decrypt").append('\n');
++            bytes(b, "key", key, 0, key == null ? 0 : key.length);
++            bytes(b, "iv", iv, 0, iv == null ? 0 : iv.length);
++            out(b);
++        } catch (Throwable ignored) {}
++    }
++
++    static void data(String event, String algorithm, byte[] in, int inOff, int inLen,
++            byte[] outBytes, int outOff, int outLen) {
++        try {
++            StringBuilder b = start(event);
++            if (b == null) return;
++            b.append("algorithm=").append(clean(algorithm)).append('\n');
++            bytes(b, "input", in, inOff, inLen);
++            bytes(b, "output", outBytes, outOff, outLen);
++            out(b);
++        } catch (Throwable ignored) {}
++    }
++
++    static void bufferData(String event, String algorithm, ByteBuffer in, int inPos, int inLen,
++            ByteBuffer outBuffer, int outPos, int outLen) {
++        try {
++            StringBuilder b = start(event);
++            if (b == null) return;
++            b.append("algorithm=").append(clean(algorithm)).append('\n');
++            buffer(b, "input", in, inPos, inLen);
++            buffer(b, "output", outBuffer, outPos, outLen);
++            out(b);
++        } catch (Throwable ignored) {}
++    }
++
++    static void tls(String event, byte[] data, int off, int len) {
++        try {
++            StringBuilder b = start(event);
++            if (b == null) return;
++            bytes(b, "data", data, off, len);
++            out(b);
++        } catch (Throwable ignored) {}
++    }
++
++    static void key(String event, String algorithm, byte[] key) {
++        try {
++            StringBuilder b = start(event);
++            if (b == null) return;
++            b.append("algorithm=").append(clean(algorithm)).append('\n');
++            bytes(b, "key", key, 0, key == null ? 0 : key.length);
++            out(b);
++        } catch (Throwable ignored) {}
++    }
++
++    private static StringBuilder start(String event) {
++        String p = pkg();
++        if (p == null || !(new java.io.File(ENABLE)).exists()) return null;
++        String target = small(PKG);
++        if (target.length() != 0 && !target.equals(p)) return null;
++        StringBuilder b = new StringBuilder(1024);
++        b.append("---\n");
++        b.append("event=").append(event).append('\n');
++        b.append("time_ms=").append(System.currentTimeMillis()).append('\n');
++        b.append("package=").append(p).append('\n');
++        b.append("thread=").append(clean(Thread.currentThread().getName())).append('\n');
++        return b;
++    }
++
++    private static void bytes(StringBuilder b, String name, byte[] data, int off, int len) {
++        if (data == null) {
++            b.append(name).append("_len=-1\n");
++            return;
++        }
++        int o = Math.max(0, Math.min(off, data.length));
++        int l = Math.max(0, Math.min(len, data.length - o));
++        int n = Math.min(l, MAX);
++        b.append(name).append("_len=").append(l).append('\n');
++        b.append(name).append("_hex=");
++        final char[] h = "0123456789abcdef".toCharArray();
++        for (int i = 0; i < n; i++) {
++            int v = data[o + i] & 0xff;
++            b.append(h[v >>> 4]).append(h[v & 15]);
++        }
++        if (n < l) b.append("...truncated_").append(l - n).append("_bytes");
++        b.append('\n');
++    }
++
++    private static void buffer(StringBuilder b, String name, ByteBuffer data, int pos, int len) {
++        if (data == null) {
++            b.append(name).append("_len=-1\n");
++            return;
++        }
++        ByteBuffer copy = data.duplicate();
++        int p = Math.max(0, Math.min(pos, copy.limit()));
++        int l = Math.max(0, Math.min(len, copy.limit() - p));
++        int n = Math.min(l, MAX);
++        b.append(name).append("_len=").append(l).append('\n');
++        b.append(name).append("_hex=");
++        final char[] h = "0123456789abcdef".toCharArray();
++        copy.position(p);
++        for (int i = 0; i < n; i++) {
++            int v = copy.get() & 0xff;
++            b.append(h[v >>> 4]).append(h[v & 15]);
++        }
++        if (n < l) b.append("...truncated_").append(l - n).append("_bytes");
++        b.append('\n');
++    }
++
++    private static String pkg() {
++        byte[] buf = new byte[256];
++        int c;
++        try (java.io.FileInputStream in = new java.io.FileInputStream("/proc/self/cmdline")) {
++            c = in.read(buf);
++        } catch (Throwable ignored) {
++            return null;
++        }
++        if (c <= 0) return null;
++        int n = 0;
++        while (n < c && buf[n] != 0) n++;
++        String p = new String(buf, 0, n, StandardCharsets.UTF_8);
++        int s = p.indexOf(':');
++        if (s >= 0) p = p.substring(0, s);
++        if (p.length() == 0) return null;
++        for (int i = 0; i < p.length(); i++) {
++            char ch = p.charAt(i);
++            if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
++                    (ch >= '0' && ch <= '9') || ch == '.' || ch == '_')) {
++                return null;
++            }
++        }
++        return p;
++    }
++
++    private static String small(String path) {
++        byte[] buf = new byte[256];
++        try (java.io.FileInputStream in = new java.io.FileInputStream(path)) {
++            int c = in.read(buf);
++            return c <= 0 ? "" : new String(buf, 0, c, StandardCharsets.UTF_8).trim();
++        } catch (Throwable ignored) {
++            return "";
++        }
++    }
++
++    private static String clean(String s) {
++        return s == null ? "null" : s.replace('\n', ' ').replace('\r', ' ');
++    }
++
++    private static void out(StringBuilder b) {
++        String p = pkg();
++        if (p == null) return;
++        try {
++            java.io.File base = new java.io.File(BASE);
++            java.io.File dir = new java.io.File(base, p);
++            if ((!base.exists() && !base.mkdirs()) || (!dir.exists() && !dir.mkdirs())) return;
++            try (java.io.FileOutputStream o =
++                    new java.io.FileOutputStream(new java.io.File(dir, "conscrypt-crypto.log"), true)) {
++                o.write(b.toString().getBytes(StandardCharsets.UTF_8));
++            }
++        } catch (Throwable ignored) {}
++    }
++}

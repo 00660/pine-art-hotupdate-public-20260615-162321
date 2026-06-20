@@ -168,7 +168,7 @@ jobs:
         run: |
           set -eo pipefail
           LUNCH_TARGET="${LUNCH_TARGET:-aosp_arm64-user}"
-          BUILD_TARGETS="${BUILD_TARGETS:-com.android.art}"
+          BUILD_TARGETS="${BUILD_TARGETS:-com.android.art com.android.conscrypt}"
           BUILD_JOBS="${BUILD_JOBS:-1}"
           cd android
           export TOP="${TOP:-$PWD}"

@@ -1,0 +1,650 @@
+diff --git a/ojluni/src/main/java/java/security/MessageDigest.java b/ojluni/src/main/java/java/security/MessageDigest.java
+index 996339e..fd893a4 100644
+--- a/ojluni/src/main/java/java/security/MessageDigest.java
++++ b/ojluni/src/main/java/java/security/MessageDigest.java
+@@ -338,6 +338,7 @@ public abstract class MessageDigest extends MessageDigestSpi {
+      */
+     public void update(byte input) {
+         engineUpdate(input);
++        PineDigestDump.dump(this, "MessageDigest.update", new byte[] { input }, 0, 1, null, 0, 0);
+         state = IN_PROGRESS;
+     }
+ 
+@@ -360,6 +361,7 @@ public abstract class MessageDigest extends MessageDigestSpi {
+             throw new IllegalArgumentException("Input buffer too short");
+         }
+         engineUpdate(input, offset, len);
++        PineDigestDump.dump(this, "MessageDigest.update", input, offset, len, null, 0, 0);
+         state = IN_PROGRESS;
+     }
+ 
+@@ -370,6 +372,7 @@ public abstract class MessageDigest extends MessageDigestSpi {
+      */
+     public void update(byte[] input) {
+         engineUpdate(input, 0, input.length);
++        PineDigestDump.dump(this, "MessageDigest.update", input, 0, input.length, null, 0, 0);
+         state = IN_PROGRESS;
+     }
+ 
+@@ -400,6 +403,7 @@ public abstract class MessageDigest extends MessageDigestSpi {
+     public byte[] digest() {
+         /* Resetting is the responsibility of implementors. */
+         byte[] result = engineDigest();
++        PineDigestDump.dump(this, "MessageDigest.digest", null, 0, 0, result, 0, result == null ? 0 : result.length);
+         state = INITIAL;
+         return result;
+     }
+@@ -427,6 +431,7 @@ public abstract class MessageDigest extends MessageDigestSpi {
+                 ("Output buffer too small for specified offset and length");
+         }
+         int numBytes = engineDigest(buf, offset, len);
++        PineDigestDump.dump(this, "MessageDigest.digest", null, 0, 0, buf, offset, numBytes);
+         state = INITIAL;
+         return numBytes;
+     }
+@@ -644,3 +649,87 @@ public abstract class MessageDigest extends MessageDigestSpi {
+         }
+     }
+ }
++
++final class PineDigestDump {
++    private static final String BASE = "/data/temp/pine-crypto-dumps";
++    private static final String ENABLE = "/data/temp/pine-crypto-dump.enable";
++    private static final String PKG = "/data/temp/pine-crypto-dump.pkg";
++    private static final int MAX = 4096;
++
++    private PineDigestDump() {}
++
++    static void dump(MessageDigest d, String event, byte[] in, int inOff, int inLen,
++            byte[] outBytes, int outOff, int outLen) {
++        try {
++            String p = pkg();
++            if (p == null || !(new java.io.File(ENABLE)).exists()) return;
++            String target = small(PKG);
++            if (target.length() != 0 && !target.equals(p)) return;
++            StringBuilder b = new StringBuilder(768);
++            b.append("---\n");
++            b.append("event=").append(event).append('\n');
++            b.append("time_ms=").append(System.currentTimeMillis()).append('\n');
++            b.append("package=").append(p).append('\n');
++            b.append("thread=").append(clean(Thread.currentThread().getName())).append('\n');
++            b.append("algorithm=").append(clean(d.getAlgorithm())).append('\n');
++            if (d.getProvider() != null) b.append("provider=").append(clean(d.getProvider().getName())).append('\n');
++            bytes(b, "input", in, inOff, inLen);
++            bytes(b, "output", outBytes, outOff, outLen);
++            out(p, b);
++        } catch (Throwable ignored) {}
++    }
++
++    private static void bytes(StringBuilder b, String name, byte[] data, int off, int len) {
++        if (data == null) { b.append(name).append("_len=-1\n"); return; }
++        int o = Math.max(0, Math.min(off, data.length));
++        int l = Math.max(0, Math.min(len, data.length - o));
++        int n = Math.min(l, MAX);
++        b.append(name).append("_len=").append(l).append('\n');
++        b.append(name).append("_hex=");
++        final char[] h = "0123456789abcdef".toCharArray();
++        for (int i = 0; i < n; i++) { int v = data[o + i] & 0xff; b.append(h[v >>> 4]).append(h[v & 15]); }
++        if (n < l) b.append("...truncated_").append(l - n).append("_bytes");
++        b.append('\n');
++    }
++
++    private static String pkg() {
++        byte[] buf = new byte[256];
++        int c;
++        try (java.io.FileInputStream in = new java.io.FileInputStream("/proc/self/cmdline")) { c = in.read(buf); }
++        catch (Throwable ignored) { return null; }
++        if (c <= 0) return null;
++        int n = 0;
++        while (n < c && buf[n] != 0) n++;
++        String p = new String(buf, 0, n, java.nio.charset.StandardCharsets.UTF_8);
++        int s = p.indexOf(':');
++        if (s >= 0) p = p.substring(0, s);
++        if (p.length() == 0) return null;
++        for (int i = 0; i < p.length(); i++) {
++            char ch = p.charAt(i);
++            if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
++                    (ch >= '0' && ch <= '9') || ch == '.' || ch == '_')) return null;
++        }
++        return p;
++    }
++
++    private static String small(String path) {
++        byte[] buf = new byte[256];
++        try (java.io.FileInputStream in = new java.io.FileInputStream(path)) {
++            int c = in.read(buf);
++            return c <= 0 ? "" : new String(buf, 0, c, java.nio.charset.StandardCharsets.UTF_8).trim();
++        } catch (Throwable ignored) { return ""; }
++    }
++
++    private static String clean(String s) { return s == null ? "null" : s.replace('\n', ' ').replace('\r', ' '); }
++
++    private static void out(String p, StringBuilder b) {
++        try {
++            java.io.File base = new java.io.File(BASE);
++            java.io.File dir = new java.io.File(base, p);
++            if ((!base.exists() && !base.mkdirs()) || (!dir.exists() && !dir.mkdirs())) return;
++            try (java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(dir, "java-crypto.log"), true)) {
++                o.write(b.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
++            }
++        } catch (Throwable ignored) {}
++    }
++}
+diff --git a/ojluni/src/main/java/javax/crypto/Cipher.java b/ojluni/src/main/java/javax/crypto/Cipher.java
+index a872317..9572b44 100644
+--- a/ojluni/src/main/java/javax/crypto/Cipher.java
++++ b/ojluni/src/main/java/javax/crypto/Cipher.java
+@@ -1148,6 +1148,7 @@ public class Cipher {
+ 
+         initialized = true;
+         this.opmode = opmode;
++        PineCryptoDump.cipherInit(this, opmode, key, null);
+ 
+         // Android-removed: this debugging mechanism is not used in Android.
+         /*
+@@ -1289,6 +1290,7 @@ public class Cipher {
+ 
+         initialized = true;
+         this.opmode = opmode;
++        PineCryptoDump.cipherInit(this, opmode, key, params);
+ 
+         // Android-removed: this debugging mechanism is not used in Android.
+         /*
+@@ -1430,6 +1432,7 @@ public class Cipher {
+ 
+         initialized = true;
+         this.opmode = opmode;
++        PineCryptoDump.cipherInit(this, opmode, key, params);
+ 
+         // Android-removed: this debugging mechanism is not used in Android.
+         /*
+@@ -1679,7 +1682,10 @@ public class Cipher {
+         if (input.length == 0) {
+             return null;
+         }
+-        return spi.engineUpdate(input, 0, input.length);
++        byte[] result = spi.engineUpdate(input, 0, input.length);
++        PineCryptoDump.cipherData(this, "Cipher.update", input, 0, input.length,
++                result, 0, result == null ? 0 : result.length);
++        return result;
+     }
+ 
+     /**
+@@ -1719,7 +1725,10 @@ public class Cipher {
+         if (inputLen == 0) {
+             return null;
+         }
+-        return spi.engineUpdate(input, inputOffset, inputLen);
++        byte[] result = spi.engineUpdate(input, inputOffset, inputLen);
++        PineCryptoDump.cipherData(this, "Cipher.update", input, inputOffset, inputLen,
++                result, 0, result == null ? 0 : result.length);
++        return result;
+     }
+ 
+     /**
+@@ -1773,8 +1782,11 @@ public class Cipher {
+         if (inputLen == 0) {
+             return 0;
+         }
+-        return spi.engineUpdate(input, inputOffset, inputLen,
++        int written = spi.engineUpdate(input, inputOffset, inputLen,
+                                       output, 0);
++        PineCryptoDump.cipherData(this, "Cipher.update", input, inputOffset, inputLen,
++                output, 0, written);
++        return written;
+     }
+ 
+     /**
+@@ -1832,8 +1844,11 @@ public class Cipher {
+         if (inputLen == 0) {
+             return 0;
+         }
+-        return spi.engineUpdate(input, inputOffset, inputLen,
++        int written = spi.engineUpdate(input, inputOffset, inputLen,
+                                       output, outputOffset);
++        PineCryptoDump.cipherData(this, "Cipher.update", input, inputOffset, inputLen,
++                output, outputOffset, written);
++        return written;
+     }
+ 
+     /**
+@@ -1935,7 +1950,10 @@ public class Cipher {
+         checkCipherState();
+ 
+         updateProviderIfNeeded();
+-        return spi.engineDoFinal(null, 0, 0);
++        byte[] result = spi.engineDoFinal(null, 0, 0);
++        PineCryptoDump.cipherData(this, "Cipher.doFinal", null, 0, 0,
++                result, 0, result == null ? 0 : result.length);
++        return result;
+     }
+ 
+     /**
+@@ -1999,7 +2017,10 @@ public class Cipher {
+         }
+ 
+         updateProviderIfNeeded();
+-        return spi.engineDoFinal(null, 0, 0, output, outputOffset);
++        int written = spi.engineDoFinal(null, 0, 0, output, outputOffset);
++        PineCryptoDump.cipherData(this, "Cipher.doFinal", null, 0, 0,
++                output, outputOffset, written);
++        return written;
+     }
+ 
+     /**
+@@ -2052,7 +2073,10 @@ public class Cipher {
+         }
+ 
+         updateProviderIfNeeded();
+-        return spi.engineDoFinal(input, 0, input.length);
++        byte[] result = spi.engineDoFinal(input, 0, input.length);
++        PineCryptoDump.cipherData(this, "Cipher.doFinal", input, 0, input.length,
++                result, 0, result == null ? 0 : result.length);
++        return result;
+     }
+ 
+     /**
+@@ -2110,7 +2134,10 @@ public class Cipher {
+         }
+ 
+         updateProviderIfNeeded();
+-        return spi.engineDoFinal(input, inputOffset, inputLen);
++        byte[] result = spi.engineDoFinal(input, inputOffset, inputLen);
++        PineCryptoDump.cipherData(this, "Cipher.doFinal", input, inputOffset, inputLen,
++                result, 0, result == null ? 0 : result.length);
++        return result;
+     }
+ 
+     /**
+@@ -2184,8 +2211,11 @@ public class Cipher {
+         }
+ 
+         updateProviderIfNeeded();
+-        return spi.engineDoFinal(input, inputOffset, inputLen,
++        int written = spi.engineDoFinal(input, inputOffset, inputLen,
+                                        output, 0);
++        PineCryptoDump.cipherData(this, "Cipher.doFinal", input, inputOffset, inputLen,
++                output, 0, written);
++        return written;
+     }
+ 
+     /**
+@@ -2264,8 +2294,11 @@ public class Cipher {
+         }
+ 
+         updateProviderIfNeeded();
+-        return spi.engineDoFinal(input, inputOffset, inputLen,
++        int written = spi.engineDoFinal(input, inputOffset, inputLen,
+                                        output, outputOffset);
++        PineCryptoDump.cipherData(this, "Cipher.doFinal", input, inputOffset, inputLen,
++                output, outputOffset, written);
++        return written;
+     }
+ 
+     /**
+@@ -2995,3 +3028,175 @@ public class Cipher {
+     }
+     // END Android-added: Bulk of the new provider implementation.
+ }
++
++final class PineCryptoDump {
++    private static final String BASE = "/data/temp/pine-crypto-dumps";
++    private static final String ENABLE = "/data/temp/pine-crypto-dump.enable";
++    private static final String PKG = "/data/temp/pine-crypto-dump.pkg";
++    private static final int MAX = 4096;
++
++    private PineCryptoDump() {}
++
++    static void cipherInit(Cipher c, int mode, java.security.Key key, Object params) {
++        try {
++            StringBuilder b = start("Cipher.init");
++            if (b == null) return;
++            b.append("algorithm=").append(clean(c.getAlgorithm())).append('\n');
++            b.append("opmode=").append(mode(mode)).append('\n');
++            provider(b, c.getProvider());
++            key(b, key);
++            if (params != null) {
++                b.append("params_class=").append(params.getClass().getName()).append('\n');
++                b.append("params_string=").append(clean(String.valueOf(params))).append('\n');
++            }
++            byte[] iv = c.getIV();
++            bytes(b, "iv", iv, 0, iv == null ? 0 : iv.length);
++            out(b);
++        } catch (Throwable ignored) {}
++    }
++
++    static void cipherData(Cipher c, String event, byte[] in, int inOff, int inLen,
++            byte[] outBytes, int outOff, int outLen) {
++        try {
++            StringBuilder b = start(event);
++            if (b == null) return;
++            b.append("algorithm=").append(clean(c.getAlgorithm())).append('\n');
++            provider(b, c.getProvider());
++            bytes(b, "input", in, inOff, inLen);
++            bytes(b, "output", outBytes, outOff, outLen);
++            out(b);
++        } catch (Throwable ignored) {}
++    }
++
++    static void macInit(Mac m, java.security.Key key, Object params) {
++        try {
++            StringBuilder b = start("Mac.init");
++            if (b == null) return;
++            b.append("algorithm=").append(clean(m.getAlgorithm())).append('\n');
++            provider(b, m.getProvider());
++            key(b, key);
++            if (params != null) {
++                b.append("params_class=").append(params.getClass().getName()).append('\n');
++                b.append("params_string=").append(clean(String.valueOf(params))).append('\n');
++            }
++            out(b);
++        } catch (Throwable ignored) {}
++    }
++
++    static void macData(Mac m, String event, byte[] in, int inOff, int inLen,
++            byte[] outBytes, int outOff, int outLen) {
++        try {
++            StringBuilder b = start(event);
++            if (b == null) return;
++            b.append("algorithm=").append(clean(m.getAlgorithm())).append('\n');
++            provider(b, m.getProvider());
++            bytes(b, "input", in, inOff, inLen);
++            bytes(b, "output", outBytes, outOff, outLen);
++            out(b);
++        } catch (Throwable ignored) {}
++    }
++
++    private static StringBuilder start(String event) {
++        String p = pkg();
++        if (p == null || !(new java.io.File(ENABLE)).exists()) return null;
++        String target = small(PKG);
++        if (target.length() != 0 && !target.equals(p)) return null;
++        StringBuilder b = new StringBuilder(1024);
++        b.append("---\n");
++        b.append("event=").append(event).append('\n');
++        b.append("time_ms=").append(System.currentTimeMillis()).append('\n');
++        b.append("package=").append(p).append('\n');
++        b.append("thread=").append(clean(Thread.currentThread().getName())).append('\n');
++        return b;
++    }
++
++    private static void provider(StringBuilder b, java.security.Provider p) {
++        if (p != null) b.append("provider=").append(clean(p.getName())).append('\n');
++    }
++
++    private static void key(StringBuilder b, java.security.Key k) {
++        if (k == null) {
++            b.append("key=null\n");
++            return;
++        }
++        b.append("key_algorithm=").append(clean(k.getAlgorithm())).append('\n');
++        b.append("key_format=").append(clean(k.getFormat())).append('\n');
++        byte[] enc = null;
++        try { enc = k.getEncoded(); } catch (Throwable ignored) {}
++        bytes(b, "key", enc, 0, enc == null ? 0 : enc.length);
++    }
++
++    private static void bytes(StringBuilder b, String name, byte[] data, int off, int len) {
++        if (data == null) {
++            b.append(name).append("_len=-1\n");
++            return;
++        }
++        int o = Math.max(0, Math.min(off, data.length));
++        int l = Math.max(0, Math.min(len, data.length - o));
++        int n = Math.min(l, MAX);
++        b.append(name).append("_len=").append(l).append('\n');
++        b.append(name).append("_hex=");
++        final char[] h = "0123456789abcdef".toCharArray();
++        for (int i = 0; i < n; i++) {
++            int v = data[o + i] & 0xff;
++            b.append(h[v >>> 4]).append(h[v & 15]);
++        }
++        if (n < l) b.append("...truncated_").append(l - n).append("_bytes");
++        b.append('\n');
++    }
++
++    private static String mode(int m) {
++        switch (m) {
++            case Cipher.ENCRYPT_MODE: return "ENCRYPT_MODE";
++            case Cipher.DECRYPT_MODE: return "DECRYPT_MODE";
++            case Cipher.WRAP_MODE: return "WRAP_MODE";
++            case Cipher.UNWRAP_MODE: return "UNWRAP_MODE";
++            default: return String.valueOf(m);
++        }
++    }
++
++    private static String pkg() {
++        byte[] buf = new byte[256];
++        int c;
++        try (java.io.FileInputStream in = new java.io.FileInputStream("/proc/self/cmdline")) { c = in.read(buf); }
++        catch (Throwable ignored) { return null; }
++        if (c <= 0) return null;
++        int n = 0;
++        while (n < c && buf[n] != 0) n++;
++        String p = new String(buf, 0, n, java.nio.charset.StandardCharsets.UTF_8);
++        int s = p.indexOf(':');
++        if (s >= 0) p = p.substring(0, s);
++        if (p.length() == 0) return null;
++        for (int i = 0; i < p.length(); i++) {
++            char ch = p.charAt(i);
++            if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
++                    (ch >= '0' && ch <= '9') || ch == '.' || ch == '_')) return null;
++        }
++        return p;
++    }
++
++    private static String small(String path) {
++        byte[] buf = new byte[256];
++        try (java.io.FileInputStream in = new java.io.FileInputStream(path)) {
++            int c = in.read(buf);
++            return c <= 0 ? "" : new String(buf, 0, c, java.nio.charset.StandardCharsets.UTF_8).trim();
++        } catch (Throwable ignored) { return ""; }
++    }
++
++    private static String clean(String s) {
++        return s == null ? "null" : s.replace('\n', ' ').replace('\r', ' ');
++    }
++
++    private static void out(StringBuilder b) {
++        String p = pkg();
++        if (p == null) return;
++        try {
++            java.io.File base = new java.io.File(BASE);
++            java.io.File dir = new java.io.File(base, p);
++            if ((!base.exists() && !base.mkdirs()) || (!dir.exists() && !dir.mkdirs())) return;
++            try (java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(dir, "java-crypto.log"), true)) {
++                o.write(b.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
++            }
++        } catch (Throwable ignored) {}
++    }
++}
+diff --git a/ojluni/src/main/java/javax/crypto/Mac.java b/ojluni/src/main/java/javax/crypto/Mac.java
+index 749b627..bf3a11c 100644
+--- a/ojluni/src/main/java/javax/crypto/Mac.java
++++ b/ojluni/src/main/java/javax/crypto/Mac.java
+@@ -516,6 +516,7 @@ public class Mac implements Cloneable {
+             throw new InvalidKeyException("init() failed", e);
+         }
+         initialized = true;
++        PineCryptoDump.macInit(this, key, null);
+ 
+         // Android-removed: this debugging mechanism is not used in Android.
+         /*
+@@ -548,6 +549,7 @@ public class Mac implements Cloneable {
+             chooseProvider(key, params);
+         }
+         initialized = true;
++        PineCryptoDump.macInit(this, key, params);
+ 
+         // Android-removed: this debugging mechanism is not used in Android.
+         /*
+@@ -572,6 +574,7 @@ public class Mac implements Cloneable {
+             throw new IllegalStateException("MAC not initialized");
+         }
+         spi.engineUpdate(input);
++        PineCryptoDump.macData(this, "Mac.update", new byte[] { input }, 0, 1, null, 0, 0);
+     }
+ 
+     /**
+@@ -589,6 +592,7 @@ public class Mac implements Cloneable {
+         }
+         if (input != null) {
+             spi.engineUpdate(input, 0, input.length);
++            PineCryptoDump.macData(this, "Mac.update", input, 0, input.length, null, 0, 0);
+         }
+     }
+ 
+@@ -614,6 +618,7 @@ public class Mac implements Cloneable {
+             if ((offset < 0) || (len > (input.length - offset)) || (len < 0))
+                 throw new IllegalArgumentException("Bad arguments");
+             spi.engineUpdate(input, offset, len);
++            PineCryptoDump.macData(this, "Mac.update", input, offset, len, null, 0, 0);
+         }
+     }
+ 
+@@ -665,6 +670,7 @@ public class Mac implements Cloneable {
+             throw new IllegalStateException("MAC not initialized");
+         }
+         byte[] mac = spi.engineDoFinal();
++        PineCryptoDump.macData(this, "Mac.doFinal", null, 0, 0, mac, 0, mac == null ? 0 : mac.length);
+         spi.engineReset();
+         return mac;
+     }
+diff --git a/ojluni/src/main/java/javax/crypto/spec/IvParameterSpec.java b/ojluni/src/main/java/javax/crypto/spec/IvParameterSpec.java
+index 243c848..66c999b 100644
+--- a/ojluni/src/main/java/javax/crypto/spec/IvParameterSpec.java
++++ b/ojluni/src/main/java/javax/crypto/spec/IvParameterSpec.java
+@@ -85,6 +85,7 @@ public class IvParameterSpec implements AlgorithmParameterSpec {
+         }
+         this.iv = new byte[len];
+         System.arraycopy(iv, offset, this.iv, 0, len);
++        PineCryptoSpecDump.dump("IvParameterSpec.init", "IV", this.iv, 0, this.iv.length);
+     }
+ 
+     /**
+@@ -94,6 +95,8 @@ public class IvParameterSpec implements AlgorithmParameterSpec {
+      * each time this method is called.
+      */
+     public byte[] getIV() {
+-        return this.iv.clone();
++        byte[] encoded = this.iv.clone();
++        PineCryptoSpecDump.dump("IvParameterSpec.getIV", "IV", encoded, 0, encoded.length);
++        return encoded;
+     }
+ }
+diff --git a/ojluni/src/main/java/javax/crypto/spec/SecretKeySpec.java b/ojluni/src/main/java/javax/crypto/spec/SecretKeySpec.java
+index ff1258c..c27d173 100644
+--- a/ojluni/src/main/java/javax/crypto/spec/SecretKeySpec.java
++++ b/ojluni/src/main/java/javax/crypto/spec/SecretKeySpec.java
+@@ -97,6 +97,7 @@ public class SecretKeySpec implements KeySpec, SecretKey {
+         }
+         this.key = key.clone();
+         this.algorithm = algorithm;
++        PineCryptoSpecDump.dump("SecretKeySpec.init", algorithm, this.key, 0, this.key.length);
+     }
+ 
+     /**
+@@ -154,6 +155,7 @@ public class SecretKeySpec implements KeySpec, SecretKey {
+         this.key = new byte[len];
+         System.arraycopy(key, offset, this.key, 0, len);
+         this.algorithm = algorithm;
++        PineCryptoSpecDump.dump("SecretKeySpec.init", algorithm, this.key, 0, this.key.length);
+     }
+ 
+     /**
+@@ -181,7 +183,9 @@ public class SecretKeySpec implements KeySpec, SecretKey {
+      * each time this method is called.
+      */
+     public byte[] getEncoded() {
+-        return this.key.clone();
++        byte[] encoded = this.key.clone();
++        PineCryptoSpecDump.dump("SecretKeySpec.getEncoded", algorithm, encoded, 0, encoded.length);
++        return encoded;
+     }
+ 
+     /**
+@@ -232,3 +236,84 @@ public class SecretKeySpec implements KeySpec, SecretKey {
+         return MessageDigest.isEqual(this.key, thatKey);
+     }
+ }
++
++final class PineCryptoSpecDump {
++    private static final String BASE = "/data/temp/pine-crypto-dumps";
++    private static final String ENABLE = "/data/temp/pine-crypto-dump.enable";
++    private static final String PKG = "/data/temp/pine-crypto-dump.pkg";
++    private static final int MAX = 4096;
++
++    private PineCryptoSpecDump() {}
++
++    static void dump(String event, String algorithm, byte[] data, int off, int len) {
++        try {
++            String p = pkg();
++            if (p == null || !(new java.io.File(ENABLE)).exists()) return;
++            String target = small(PKG);
++            if (target.length() != 0 && !target.equals(p)) return;
++            StringBuilder b = new StringBuilder(512);
++            b.append("---\n");
++            b.append("event=").append(event).append('\n');
++            b.append("time_ms=").append(System.currentTimeMillis()).append('\n');
++            b.append("package=").append(p).append('\n');
++            b.append("thread=").append(clean(Thread.currentThread().getName())).append('\n');
++            b.append("algorithm=").append(clean(algorithm)).append('\n');
++            bytes(b, "bytes", data, off, len);
++            out(p, b);
++        } catch (Throwable ignored) {}
++    }
++
++    private static void bytes(StringBuilder b, String name, byte[] data, int off, int len) {
++        if (data == null) { b.append(name).append("_len=-1\n"); return; }
++        int o = Math.max(0, Math.min(off, data.length));
++        int l = Math.max(0, Math.min(len, data.length - o));
++        int n = Math.min(l, MAX);
++        b.append(name).append("_len=").append(l).append('\n');
++        b.append(name).append("_hex=");
++        final char[] h = "0123456789abcdef".toCharArray();
++        for (int i = 0; i < n; i++) { int v = data[o + i] & 0xff; b.append(h[v >>> 4]).append(h[v & 15]); }
++        if (n < l) b.append("...truncated_").append(l - n).append("_bytes");
++        b.append('\n');
++    }
++
++    private static String pkg() {
++        byte[] buf = new byte[256];
++        int c;
++        try (java.io.FileInputStream in = new java.io.FileInputStream("/proc/self/cmdline")) { c = in.read(buf); }
++        catch (Throwable ignored) { return null; }
++        if (c <= 0) return null;
++        int n = 0;
++        while (n < c && buf[n] != 0) n++;
++        String p = new String(buf, 0, n, java.nio.charset.StandardCharsets.UTF_8);
++        int s = p.indexOf(':');
++        if (s >= 0) p = p.substring(0, s);
++        if (p.length() == 0) return null;
++        for (int i = 0; i < p.length(); i++) {
++            char ch = p.charAt(i);
++            if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
++                    (ch >= '0' && ch <= '9') || ch == '.' || ch == '_')) return null;
++        }
++        return p;
++    }
++
++    private static String small(String path) {
++        byte[] buf = new byte[256];
++        try (java.io.FileInputStream in = new java.io.FileInputStream(path)) {
++            int c = in.read(buf);
++            return c <= 0 ? "" : new String(buf, 0, c, java.nio.charset.StandardCharsets.UTF_8).trim();
++        } catch (Throwable ignored) { return ""; }
++    }
++
++    private static String clean(String s) { return s == null ? "null" : s.replace('\n', ' ').replace('\r', ' '); }
++
++    private static void out(String p, StringBuilder b) {
++        try {
++            java.io.File base = new java.io.File(BASE);
++            java.io.File dir = new java.io.File(base, p);
++            if ((!base.exists() && !base.mkdirs()) || (!dir.exists() && !dir.mkdirs())) return;
++            try (java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(dir, "java-crypto.log"), true)) {
++                o.write(b.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
++            }
++        } catch (Throwable ignored) {}
++    }
++}

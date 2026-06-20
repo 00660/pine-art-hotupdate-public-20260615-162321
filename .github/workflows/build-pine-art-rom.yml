@@ -120,16 +120,24 @@ jobs:
           repo manifest -r > ../pine-art-rom-resolved-manifest.xml
           git -C art rev-parse HEAD > ../pine-art-revision.txt
 
-      - name: Apply pine ART RegisterDexFile patch
+      - name: Apply pine ART and libcore crypto patches
         run: |
           set -euo pipefail
-          PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch"
-          git -C android/art apply --check "$PATCH"
-          git -C android/art apply "$PATCH"
+          ART_PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch"
+          LIBCORE_PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-libcore-crypto-dump.patch"
+          git -C android/art apply --check "$ART_PATCH"
+          git -C android/art apply "$ART_PATCH"
           git -C android/art diff --check
           grep -n "PineMaybeDumpRegisteredDexFile" android/art/runtime/class_linker.cc
           grep -n "debug.pine.art_dexdump" android/art/runtime/class_linker.cc
           git -C android/art diff > pine-art-rom-applied.diff
+          git -C android/libcore apply --check "$LIBCORE_PATCH"
+          git -C android/libcore apply "$LIBCORE_PATCH"
+          git -C android/libcore diff --check
+          grep -n "PineCryptoDump" android/libcore/ojluni/src/main/java/javax/crypto/Cipher.java
+          grep -n "PineDigestDump" android/libcore/ojluni/src/main/java/java/security/MessageDigest.java
+          grep -n "PineCryptoSpecDump" android/libcore/ojluni/src/main/java/javax/crypto/spec/SecretKeySpec.java
+          git -C android/libcore diff > pine-libcore-crypto-dump-applied.diff
 
       - name: Drop repo metadata before build
         run: |
@@ -217,6 +225,7 @@ jobs:
           cp pine-art-revision.txt artifacts/pine-art-hotupdate/
           cp pine-art-rom-resolved-manifest.xml artifacts/pine-art-hotupdate/
           cp pine-art-rom-applied.diff artifacts/pine-art-hotupdate/
+          cp pine-libcore-crypto-dump-applied.diff artifacts/pine-art-hotupdate/
           mapfile -t apex_files < <(find android/out -type f \( -name 'com.android.art*.apex' -o -name 'com.android.runtime*.apex' \) | sort)
           if [ "${#apex_files[@]}" -eq 0 ]; then
             echo "No ART/runtime APEX files produced." >&2
@@ -232,7 +241,9 @@ jobs:
             echo "# pine ART hot update"
             echo
             echo "ROM baseline: pine Android 12 ART tag android-12.0.0_r32"
-            echo "Patch: RegisterDexFile DEX dump hook"
+            echo "Patch: RegisterDexFile DEX dump hook + libcore Java crypto dump hook"
+            echo "Crypto dump output: /data/temp/pine-crypto-dumps/<package>/java-crypto.log"
+            echo "Crypto dump switch: create /data/temp/pine-crypto-dump.enable; optional package filter in /data/temp/pine-crypto-dump.pkg"
             echo
             echo "Generated files:"
             sed 's#^#- #' artifacts/pine-art-hotupdate/apex-files.txt
@@ -254,6 +265,7 @@ jobs:
             pine-art-revision.txt
             pine-art-rom-resolved-manifest.xml
             pine-art-rom-applied.diff
+            pine-libcore-crypto-dump-applied.diff
 
       - name: Upload ART hot update artifact
         uses: actions/upload-artifact@v4

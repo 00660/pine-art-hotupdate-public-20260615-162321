@@ -1,0 +1,68 @@
+# Pine ART Crypto Dump Build Handoff
+
+## Scope
+
+This repository is the pine ART APEX builder that already produced successful ART artifacts. The new work adds Java crypto dump instrumentation to the same `com.android.art` GitHub Actions build, not a separate local Android build.
+
+## Changed files
+
+- `.github/workflows/build-pine-art-rom.yml`: applies both the existing ART DEX dump patch and the new libcore crypto dump patch, then uploads `pine-libcore-crypto-dump-applied.diff`.
+- `devices/pine/patches/art/android-12.0.0_r32/pine-libcore-crypto-dump.patch`: patches Android 12 `libcore` Java crypto classes.
+- `README.md`: documents runtime switches and output path.
+
+## Runtime behavior
+
+The generated ART APEX logs Java crypto material to:
+
+```text
+/data/temp/pine-crypto-dumps/<package>/java-crypto.log
+```
+
+Enable globally:
+
+```bash
+adb shell su -c "mkdir -p /data/temp/pine-crypto-dumps && chmod 0777 /data/temp /data/temp/pine-crypto-dumps"
+adb shell su -c "touch /data/temp/pine-crypto-dump.enable"
+```
+
+Limit to one package:
+
+```bash
+adb shell su -c "echo com.target.app > /data/temp/pine-crypto-dump.pkg"
+```
+
+Disable:
+
+```bash
+adb shell su -c "rm -f /data/temp/pine-crypto-dump.enable /data/temp/pine-crypto-dump.pkg"
+```
+
+## Instrumented APIs
+
+- `Cipher.init`, `Cipher.update`, `Cipher.doFinal`
+- `Mac.init`, `Mac.update`, `Mac.doFinal`
+- `MessageDigest.update`, `MessageDigest.digest`
+- `SecretKeySpec` constructors and `getEncoded`
+- `IvParameterSpec` constructors and `getIV`
+
+## Backup
+
+Pre-edit backup:
+
+```text
+.backups\pine-crypto-output-20260620-132538
+```
+
+The backup contains the pre-edit workflow, README, guide, patch directory, and `pre-edit.diff`.
+
+## Validation
+
+Local validation completed before pushing:
+
+```text
+git apply --check pine-libcore-crypto-dump.patch: OK
+git apply pine-libcore-crypto-dump.patch: OK
+git diff --check after apply: OK
+```
+
+GitHub Actions remains the authoritative build path. Do not run a full Android build locally for this repo unless explicitly needed.

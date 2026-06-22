@@ -156,6 +156,15 @@ index cd2c12c..2db96e9 100644
                  return Collections.emptyList();
              }
 -            return parceledList.getList();
++            return pineFilterPackageInfoList(parceledList.getList());
+         } catch (RemoteException e) {
+             throw e.rethrowFromSystemServer();
+         }
+@@ -1135,7 +1229,7 @@ public class ApplicationPackageManager extends PackageManager {
+             if (parceledList == null) {
+                 return Collections.emptyList();
+             }
+-            return parceledList.getList();
 +            return pineFilterApplicationInfoList(parceledList.getList());
          } catch (RemoteException e) {
              throw e.rethrowFromSystemServer();

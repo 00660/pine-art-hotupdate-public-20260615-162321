@@ -10,6 +10,9 @@ This repository is the pine ART, Conscrypt, and BoringSSL APEX builder that alre
 - `devices/pine/patches/art/android-12.0.0_r32/pine-libcore-crypto-dump.patch`: patches Android 12 `libcore` Java crypto classes.
 - `devices/pine/patches/art/android-12.0.0_r32/pine-conscrypt-crypto-dump.patch`: patches Android 12 Conscrypt repackaged provider/TLS classes.
 - `devices/pine/patches/art/android-12.0.0_r32/pine-boringssl-crypto-dump.patch`: patches Android 12 BoringSSL native crypto entry points.
+- `devices/pine/patches/bionic/android-12.0.0_r32/pine-bionic-linker-antidetect.patch`: patches Android 12 bionic/libc wrappers and linker dlopen paths for target-scoped native hiding.
+- `devices/pine/patches/frameworks-base/android-12.0.0_r32/pine-framework-antidetect.patch`: patches Android 12 framework package/property APIs for target-scoped hiding.
+- `devices/pine/tools/pine-so-analysis.py`: offline SO/OLLVM report tool included in the build artifact.
 - `README.md`: documents runtime switches and output path.
 
 ## Runtime behavior
@@ -57,6 +60,9 @@ adb shell su -c "rm -f /data/temp/pine-crypto-dump.enable /data/temp/pine-crypto
 - BoringSSL `EVP_EncryptFinal_ex`, `EVP_DecryptFinal_ex`
 - BoringSSL `HMAC_Init_ex`, `HMAC_Update`, `HMAC_Final`
 - BoringSSL `MD5_Update`, `SHA1_Update`, `SHA256_Update`, `SHA512_Update`
+- bionic `access`, `faccessat`, `open`, `openat`, `readlink`
+- linker `dlopen` / `android_dlopen_ext` instrumentation-name blocking
+- framework `PackageManager` package filtering and `SystemProperties` spoofing
 
 ## Backup
 

@@ -1,0 +1,359 @@
+diff --git a/libc/Android.bp b/libc/Android.bp
+index 2c0656f..706062f 100644
+--- a/libc/Android.bp
++++ b/libc/Android.bp
+@@ -1111,6 +1111,7 @@ cc_library_static {
+         "bionic/open.cpp",
+         "bionic/pathconf.cpp",
+         "bionic/pause.cpp",
++        "bionic/pine_antidetect.cpp",
+         "bionic/pidfd.cpp",
+         "bionic/pipe.cpp",
+         "bionic/poll.cpp",
+diff --git a/libc/bionic/access.cpp b/libc/bionic/access.cpp
+index 360b672..5559593 100644
+--- a/libc/bionic/access.cpp
++++ b/libc/bionic/access.cpp
+@@ -29,6 +29,12 @@
+ #include <fcntl.h>
+ #include <unistd.h>
+ 
++extern "C" bool __pine_bionic_should_hide_path(const char*);
++extern "C" int __pine_bionic_hidden_errno();
++
+ int access(const char* path, int mode) {
++  if (__pine_bionic_should_hide_path(path)) {
++    return __pine_bionic_hidden_errno();
++  }
+   return faccessat(AT_FDCWD, path, mode, 0);
+ }
+diff --git a/libc/bionic/faccessat.cpp b/libc/bionic/faccessat.cpp
+index bfaec51..34e57a2 100644
+--- a/libc/bionic/faccessat.cpp
++++ b/libc/bionic/faccessat.cpp
+@@ -31,6 +31,8 @@
+ #include <errno.h>
+ 
+ extern "C" int __faccessat(int, const char*, int);
++extern "C" bool __pine_bionic_should_hide_path(const char*);
++extern "C" int __pine_bionic_hidden_errno();
+ 
+ int faccessat(int dirfd, const char* pathname, int mode, int flags) {
+   // "The mode specifies the accessibility check(s) to be performed,
+@@ -56,5 +58,9 @@ int faccessat(int dirfd, const char* pathname, int mode, int flags) {
+     return -1;
+   }
+ 
++  if (__pine_bionic_should_hide_path(pathname)) {
++    return __pine_bionic_hidden_errno();
++  }
++
+   return __faccessat(dirfd, pathname, mode);
+ }
+diff --git a/libc/bionic/open.cpp b/libc/bionic/open.cpp
+index bd8685a..24f2dd8 100644
+--- a/libc/bionic/open.cpp
++++ b/libc/bionic/open.cpp
+@@ -26,6 +26,7 @@
+  * SUCH DAMAGE.
+  */
+ 
++#include <errno.h>
+ #include <fcntl.h>
+ #include <stdarg.h>
+ #include <stdlib.h>
+@@ -35,6 +36,8 @@
+ #include "private/bionic_fortify.h"
+ 
+ extern "C" int __openat(int, const char*, int, int);
++extern "C" bool __pine_bionic_should_hide_path(const char*);
++extern "C" int __pine_bionic_hidden_errno();
+ 
+ static inline int force_O_LARGEFILE(int flags) {
+ #if defined(__LP64__)
+@@ -63,12 +66,19 @@ int open(const char* pathname, int flags, ...) {
+     va_end(args);
+   }
+ 
++  if (__pine_bionic_should_hide_path(pathname)) {
++    return __pine_bionic_hidden_errno();
++  }
++
+   return FDTRACK_CREATE(__openat(AT_FDCWD, pathname, force_O_LARGEFILE(flags), mode));
+ }
+ __strong_alias(open64, open);
+ 
+ int __open_2(const char* pathname, int flags) {
+   if (needs_mode(flags)) __fortify_fatal("open: called with O_CREAT/O_TMPFILE but no mode");
++  if (__pine_bionic_should_hide_path(pathname)) {
++    return __pine_bionic_hidden_errno();
++  }
+   return FDTRACK_CREATE_NAME("open", __openat(AT_FDCWD, pathname, force_O_LARGEFILE(flags), 0));
+ }
+ 
+@@ -82,11 +92,18 @@ int openat(int fd, const char *pathname, int flags, ...) {
+     va_end(args);
+   }
+ 
++  if (__pine_bionic_should_hide_path(pathname)) {
++    return __pine_bionic_hidden_errno();
++  }
++
+   return FDTRACK_CREATE_NAME("openat", __openat(fd, pathname, force_O_LARGEFILE(flags), mode));
+ }
+ __strong_alias(openat64, openat);
+ 
+ int __openat_2(int fd, const char* pathname, int flags) {
+   if (needs_mode(flags)) __fortify_fatal("open: called with O_CREAT/O_TMPFILE but no mode");
++  if (__pine_bionic_should_hide_path(pathname)) {
++    return __pine_bionic_hidden_errno();
++  }
+   return FDTRACK_CREATE_NAME("openat", __openat(fd, pathname, force_O_LARGEFILE(flags), 0));
+ }
+diff --git a/libc/bionic/pine_antidetect.cpp b/libc/bionic/pine_antidetect.cpp
+new file mode 100644
+index 0000000..5816d36
+--- /dev/null
++++ b/libc/bionic/pine_antidetect.cpp
+@@ -0,0 +1,141 @@
++/*
++ * Pine target-scoped native anti-detection helpers.
++ */
++
++#include <errno.h>
++#include <fcntl.h>
++#include <string.h>
++#include <sys/system_properties.h>
++#include <unistd.h>
++
++extern "C" int __openat(int, const char*, int, int);
++
++static bool pine_str_eq(const char* a, const char* b) {
++  return strcmp(a, b) == 0;
++}
++
++static bool pine_str_has(const char* haystack, const char* needle) {
++  return haystack != nullptr && needle != nullptr && strstr(haystack, needle) != nullptr;
++}
++
++static bool pine_prop_enabled(const char* key) {
++  char value[PROP_VALUE_MAX] = {};
++  if (__system_property_get(key, value) <= 0) {
++    return false;
++  }
++  return pine_str_eq(value, "1") || pine_str_eq(value, "true") ||
++         pine_str_eq(value, "y") || pine_str_eq(value, "yes") ||
++         pine_str_eq(value, "on");
++}
++
++static void pine_get_target_package(char* value, size_t value_size) {
++  if (value_size == 0) {
++    return;
++  }
++  value[0] = '\0';
++  if (__system_property_get("debug.pine.hide_pkg", value) > 0) {
++    return;
++  }
++  __system_property_get("persist.sys.pine_hide_pkg", value);
++}
++
++static bool pine_current_process_matches_target() {
++  if (!pine_prop_enabled("debug.pine.native_hide") &&
++      !pine_prop_enabled("persist.sys.pine_native_hide")) {
++    return false;
++  }
++
++  char target[PROP_VALUE_MAX] = {};
++  pine_get_target_package(target, sizeof(target));
++  if (target[0] == '\0' || pine_str_eq(target, "*")) {
++    return true;
++  }
++
++  char cmdline[256] = {};
++  int fd = __openat(AT_FDCWD, "/proc/self/cmdline", O_RDONLY | O_CLOEXEC, 0);
++  if (fd < 0) {
++    return false;
++  }
++  ssize_t n = read(fd, cmdline, sizeof(cmdline) - 1);
++  close(fd);
++  if (n <= 0) {
++    return false;
++  }
++  cmdline[n] = '\0';
++
++  size_t target_len = strlen(target);
++  return strcmp(cmdline, target) == 0 ||
++         (strncmp(cmdline, target, target_len) == 0 && cmdline[target_len] == ':');
++}
++
++static bool pine_path_has_secret(const char* path) {
++  if (path == nullptr) {
++    return false;
++  }
++
++  static const char* const needles[] = {
++      "/data/adb",
++      "/debug_ramdisk",
++      "/sbin/.magisk",
++      "/system/bin/su",
++      "/system/xbin/su",
++      "/vendor/bin/su",
++      "/su/bin",
++      "magisk",
++      "zygisk",
++      "riru",
++      "lsposed",
++      "xposed",
++      "frida",
++      "substrate",
++      "kernelsu",
++      "apatch",
++      nullptr,
++  };
++
++  for (size_t i = 0; needles[i] != nullptr; ++i) {
++    if (pine_str_has(path, needles[i])) {
++      return true;
++    }
++  }
++  return false;
++}
++
++extern "C" bool __pine_bionic_should_hide_path(const char* path) {
++  return pine_current_process_matches_target() && pine_path_has_secret(path);
++}
++
++extern "C" int __pine_bionic_hidden_errno() {
++  errno = ENOENT;
++  return -1;
++}
++
++extern "C" ssize_t __pine_bionic_filter_readlink_result(const char* path,
++                                                        char* buf,
++                                                        size_t size,
++                                                        ssize_t result) {
++  if (result <= 0 || !pine_current_process_matches_target()) {
++    return result;
++  }
++  if (__pine_bionic_should_hide_path(path)) {
++    errno = ENOENT;
++    return -1;
++  }
++
++  char tmp[512];
++  size_t n = static_cast<size_t>(result);
++  if (n >= sizeof(tmp)) {
++    n = sizeof(tmp) - 1;
++  }
++  if (n > size) {
++    n = size;
++  }
++  memcpy(tmp, buf, n);
++  tmp[n] = '\0';
++
++  if (pine_path_has_secret(tmp)) {
++    errno = ENOENT;
++    return -1;
++  }
++  return result;
++}
+diff --git a/libc/bionic/readlink.cpp b/libc/bionic/readlink.cpp
+index 3bb7bc1..79ced95 100644
+--- a/libc/bionic/readlink.cpp
++++ b/libc/bionic/readlink.cpp
+@@ -31,6 +31,9 @@
+ #include <sys/types.h>
+ #include <unistd.h>
+ 
++extern "C" ssize_t __pine_bionic_filter_readlink_result(const char*, char*, size_t, ssize_t);
++
+ ssize_t readlink(const char* path, char* buf, size_t size) {
+-  return readlinkat(AT_FDCWD, path, buf, size);
++  ssize_t result = readlinkat(AT_FDCWD, path, buf, size);
++  return __pine_bionic_filter_readlink_result(path, buf, size, result);
+ }
+diff --git a/linker/linker.cpp b/linker/linker.cpp
+index 3488f5c..596c4e5 100644
+--- a/linker/linker.cpp
++++ b/linker/linker.cpp
+@@ -115,6 +115,68 @@ static const char* const kAsanVendorLibDir    = "/data/asan/vendor/lib";
+ 
+ static const char* const kAsanLibDirPrefix = "/data/asan";
+ 
++static bool pine_linker_prop_enabled(const char* key) {
++  std::string value = android::base::GetProperty(key, "");
++  return value == "1" || value == "true" || value == "y" ||
++         value == "yes" || value == "on";
++}
++
++static bool pine_linker_current_process_matches_target() {
++  if (!pine_linker_prop_enabled("debug.pine.native_hide") &&
++      !pine_linker_prop_enabled("persist.sys.pine_native_hide")) {
++    return false;
++  }
++
++  std::string target = android::base::GetProperty("debug.pine.hide_pkg", "");
++  if (target.empty()) {
++    target = android::base::GetProperty("persist.sys.pine_hide_pkg", "");
++  }
++  if (target.empty() || target == "*") {
++    return true;
++  }
++
++  char cmdline[256] = {};
++  int fd = open("/proc/self/cmdline", O_RDONLY | O_CLOEXEC);
++  if (fd < 0) {
++    return false;
++  }
++  ssize_t n = read(fd, cmdline, sizeof(cmdline) - 1);
++  close(fd);
++  if (n <= 0) {
++    return false;
++  }
++  cmdline[n] = '\0';
++
++  return target == cmdline ||
++         (strncmp(cmdline, target.c_str(), target.size()) == 0 &&
++          cmdline[target.size()] == ':');
++}
++
++static bool pine_linker_should_block_library(const char* name) {
++  if (name == nullptr || !pine_linker_current_process_matches_target()) {
++    return false;
++  }
++
++  static const char* const needles[] = {
++      "frida",
++      "xposed",
++      "lsposed",
++      "zygisk",
++      "riru",
++      "substrate",
++      "magisk",
++      "kernelsu",
++      "apatch",
++      nullptr,
++  };
++  for (size_t i = 0; needles[i] != nullptr; ++i) {
++    if (strstr(name, needles[i]) != nullptr) {
++      return true;
++    }
++  }
++  return false;
++}
++
+ static const char* const kDefaultLdPaths[] = {
+   kSystemLibDir,
+   kOdmLibDir,
+@@ -2084,6 +2146,11 @@ void* do_dlopen(const char* name, int flags,
+   auto failure_guard = android::base::make_scope_guard(
+       [&]() { LD_LOG(kLogDlopen, "... dlopen failed: %s", linker_get_error_buffer()); });
+ 
++  if (pine_linker_should_block_library(name)) {
++    DL_OPEN_ERR("library \"%s\" not found", name);
++    return nullptr;
++  }
++
+   if ((flags & ~(RTLD_NOW|RTLD_LAZY|RTLD_LOCAL|RTLD_GLOBAL|RTLD_NODELETE|RTLD_NOLOAD)) != 0) {
+     DL_OPEN_ERR("invalid flags to dlopen: %x", flags);
+     return nullptr;

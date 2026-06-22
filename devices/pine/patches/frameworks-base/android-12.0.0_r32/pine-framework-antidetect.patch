@@ -1,0 +1,324 @@
+diff --git a/core/java/android/app/ApplicationPackageManager.java b/core/java/android/app/ApplicationPackageManager.java
+index cd2c12c..2db96e9 100644
+--- a/core/java/android/app/ApplicationPackageManager.java
++++ b/core/java/android/app/ApplicationPackageManager.java
+@@ -159,6 +159,90 @@ public class ApplicationPackageManager extends PackageManager {
+                     | TYPE_WHOLE_SHA512 | TYPE_PARTIAL_MERKLE_ROOT_1M_SHA256
+                     | TYPE_PARTIAL_MERKLE_ROOT_1M_SHA512;
+ 
++    private static final String[] PINE_HIDDEN_PACKAGE_TOKENS = {
++            "magisk",
++            "zygisk",
++            "riru",
++            "lsposed",
++            "xposed",
++            "frida",
++            "substrate",
++            "kernelsu",
++            "apatch",
++            "shamiko",
++            "zygote64_32",
++    };
++
++    private static boolean pineHideEnabledForProcess() {
++        if (!SystemProperties.getBoolean("debug.pine.framework_hide", false)
++                && !SystemProperties.getBoolean("persist.sys.pine_framework_hide", false)) {
++            return false;
++        }
++        String target = SystemProperties.get("debug.pine.hide_pkg", "");
++        if (target.isEmpty()) {
++            target = SystemProperties.get("persist.sys.pine_hide_pkg", "");
++        }
++        if (target.isEmpty() || "*".equals(target)) {
++            return true;
++        }
++        final String packageName = ActivityThread.currentPackageName();
++        return target.equals(packageName)
++                || (packageName != null && packageName.startsWith(target + ":"));
++    }
++
++    private static boolean pineShouldHidePackage(String packageName) {
++        if (packageName == null || !pineHideEnabledForProcess()) {
++            return false;
++        }
++        final String normalized = packageName.toLowerCase();
++        for (String token : PINE_HIDDEN_PACKAGE_TOKENS) {
++            if (normalized.contains(token)) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    private static String[] pineFilterPackageNames(String[] packages) {
++        if (packages == null || !pineHideEnabledForProcess()) {
++            return packages;
++        }
++        final ArrayList<String> filtered = new ArrayList<>(packages.length);
++        for (String packageName : packages) {
++            if (!pineShouldHidePackage(packageName)) {
++                filtered.add(packageName);
++            }
++        }
++        return filtered.toArray(new String[filtered.size()]);
++    }
++
++    private static List<PackageInfo> pineFilterPackageInfoList(List<PackageInfo> packages) {
++        if (packages == null || packages.isEmpty() || !pineHideEnabledForProcess()) {
++            return packages;
++        }
++        final ArrayList<PackageInfo> filtered = new ArrayList<>(packages.size());
++        for (PackageInfo info : packages) {
++            if (info == null || !pineShouldHidePackage(info.packageName)) {
++                filtered.add(info);
++            }
++        }
++        return filtered;
++    }
++
++    private static List<ApplicationInfo> pineFilterApplicationInfoList(
++            List<ApplicationInfo> applications) {
++        if (applications == null || applications.isEmpty() || !pineHideEnabledForProcess()) {
++            return applications;
++        }
++        final ArrayList<ApplicationInfo> filtered = new ArrayList<>(applications.size());
++        for (ApplicationInfo info : applications) {
++            if (info == null || !pineShouldHidePackage(info.packageName)) {
++                filtered.add(info);
++            }
++        }
++        return filtered;
++    }
++
+     // Name of the resource which provides background permission button string
+     public static final String APP_PERMISSION_BUTTON_ALLOW_ALWAYS =
+             "app_permission_button_allow_always";
+@@ -232,6 +316,9 @@ public class ApplicationPackageManager extends PackageManager {
+     @Override
+     public PackageInfo getPackageInfoAsUser(String packageName, int flags, int userId)
+             throws NameNotFoundException {
++        if (pineShouldHidePackage(packageName)) {
++            throw new NameNotFoundException(packageName);
++        }
+         PackageInfo pi =
+                 getPackageInfoAsUserCached(
+                         packageName,
+@@ -351,6 +438,9 @@ public class ApplicationPackageManager extends PackageManager {
+     @Override
+     public int getPackageUidAsUser(String packageName, int flags, int userId)
+             throws NameNotFoundException {
++        if (pineShouldHidePackage(packageName)) {
++            throw new NameNotFoundException(packageName);
++        }
+         try {
+             int uid = mPM.getPackageUid(packageName,
+                     updateFlagsForPackage(flags, userId), userId);
+@@ -444,6 +534,9 @@ public class ApplicationPackageManager extends PackageManager {
+     @Override
+     public ApplicationInfo getApplicationInfoAsUser(String packageName, int flags, int userId)
+             throws NameNotFoundException {
++        if (pineShouldHidePackage(packageName)) {
++            throw new NameNotFoundException(packageName);
++        }
+         ApplicationInfo ai = getApplicationInfoAsUserCached(
+                         packageName,
+                         updateFlagsForApplication(flags, userId),
+@@ -1011,7 +1104,7 @@ public class ApplicationPackageManager extends PackageManager {
+ 
+     @Override
+     public String[] getPackagesForUid(int uid) {
+-        return mGetPackagesForUidCache.query(uid).value();
++        return pineFilterPackageNames(mGetPackagesForUidCache.query(uid).value());
+     }
+ 
+     /** @hide */
+@@ -1027,7 +1120,8 @@ public class ApplicationPackageManager extends PackageManager {
+     @Override
+     public String getNameForUid(int uid) {
+         try {
+-            return mPM.getNameForUid(uid);
++            final String name = mPM.getNameForUid(uid);
++            return pineShouldHidePackage(name) ? null : name;
+         } catch (RemoteException e) {
+             throw e.rethrowFromSystemServer();
+         }
+@@ -1095,7 +1189,7 @@ public class ApplicationPackageManager extends PackageManager {
+             if (parceledList == null) {
+                 return Collections.emptyList();
+             }
+-            return parceledList.getList();
++            return pineFilterPackageInfoList(parceledList.getList());
+         } catch (RemoteException e) {
+             throw e.rethrowFromSystemServer();
+         }
+@@ -1113,7 +1207,7 @@ public class ApplicationPackageManager extends PackageManager {
+             if (parceledList == null) {
+                 return Collections.emptyList();
+             }
+-            return parceledList.getList();
++            return pineFilterApplicationInfoList(parceledList.getList());
+         } catch (RemoteException e) {
+             throw e.rethrowFromSystemServer();
+         }
+@@ -2264,6 +2358,9 @@ public class ApplicationPackageManager extends PackageManager {
+ 
+     @Override
+     public String getInstallerPackageName(String packageName) {
++        if (pineShouldHidePackage(packageName)) {
++            return null;
++        }
+         try {
+             return mPM.getInstallerPackageName(packageName);
+         } catch (RemoteException e) {
+diff --git a/core/java/android/os/SystemProperties.java b/core/java/android/os/SystemProperties.java
+index ab74199..1a8a2a2 100644
+--- a/core/java/android/os/SystemProperties.java
++++ b/core/java/android/os/SystemProperties.java
+@@ -94,6 +94,82 @@ public class SystemProperties {
+         }
+     }
+ 
++    private static boolean pinePropertyEnabled(String key) {
++        final String value = native_get(key, "");
++        return "1".equals(value) || "true".equals(value) || "y".equals(value)
++                || "yes".equals(value) || "on".equals(value);
++    }
++
++    private static boolean pineHideEnabledForProcess() {
++        if (!pinePropertyEnabled("debug.pine.framework_hide")
++                && !pinePropertyEnabled("persist.sys.pine_framework_hide")) {
++            return false;
++        }
++
++        String target = native_get("debug.pine.hide_pkg", "");
++        if (target.isEmpty()) {
++            target = native_get("persist.sys.pine_hide_pkg", "");
++        }
++        if (target.isEmpty() || "*".equals(target)) {
++            return true;
++        }
++
++        try {
++            final String packageName = android.app.ActivityThread.currentPackageName();
++            return target.equals(packageName)
++                    || (packageName != null && packageName.startsWith(target + ":"));
++        } catch (Throwable ignored) {
++            return false;
++        }
++    }
++
++    private static String pineSpoofProperty(String key) {
++        if (key == null || !pineHideEnabledForProcess()) {
++            return null;
++        }
++        switch (key) {
++            case "ro.debuggable":
++            case "ro.adb.secure":
++            case "ro.boot.flash.locked":
++            case "ro.boot.warranty_bit":
++            case "ro.boot.veritymode":
++            case "ro.boot.verifiedbootstate":
++            case "ro.boot.vbmeta.device_state":
++            case "ro.build.type":
++            case "ro.build.tags":
++            case "ro.secure":
++            case "service.adb.root":
++                break;
++            default:
++                return null;
++        }
++
++        if ("ro.debuggable".equals(key) || "service.adb.root".equals(key)
++                || "ro.boot.warranty_bit".equals(key)) {
++            return "0";
++        }
++        if ("ro.secure".equals(key) || "ro.adb.secure".equals(key)
++                || "ro.boot.flash.locked".equals(key)) {
++            return "1";
++        }
++        if ("ro.boot.verifiedbootstate".equals(key)) {
++            return "green";
++        }
++        if ("ro.boot.vbmeta.device_state".equals(key)) {
++            return "locked";
++        }
++        if ("ro.boot.veritymode".equals(key)) {
++            return "enforcing";
++        }
++        if ("ro.build.type".equals(key)) {
++            return "user";
++        }
++        if ("ro.build.tags".equals(key)) {
++            return "release-keys";
++        }
++        return null;
++    }
++
+     // The one-argument version of native_get used to be a regular native function. Nowadays,
+     // we use the two-argument form of native_get all the time, but we can't just delete the
+     // one-argument overload: apps use it via reflection, as the UnsupportedAppUsage annotation
+@@ -146,6 +222,10 @@ public class SystemProperties {
+     @SystemApi
+     public static String get(@NonNull String key) {
+         if (TRACK_KEY_ACCESS) onKeyAccess(key);
++        final String spoof = pineSpoofProperty(key);
++        if (spoof != null) {
++            return spoof;
++        }
+         return native_get(key);
+     }
+ 
+@@ -162,6 +242,10 @@ public class SystemProperties {
+     @SystemApi
+     public static String get(@NonNull String key, @Nullable String def) {
+         if (TRACK_KEY_ACCESS) onKeyAccess(key);
++        final String spoof = pineSpoofProperty(key);
++        if (spoof != null) {
++            return spoof;
++        }
+         return native_get(key, def);
+     }
+ 
+@@ -177,6 +261,14 @@ public class SystemProperties {
+     @SystemApi
+     public static int getInt(@NonNull String key, int def) {
+         if (TRACK_KEY_ACCESS) onKeyAccess(key);
++        final String spoof = pineSpoofProperty(key);
++        if (spoof != null) {
++            try {
++                return Integer.parseInt(spoof);
++            } catch (NumberFormatException ignored) {
++                return def;
++            }
++        }
+         return native_get_int(key, def);
+     }
+ 
+@@ -192,6 +284,14 @@ public class SystemProperties {
+     @SystemApi
+     public static long getLong(@NonNull String key, long def) {
+         if (TRACK_KEY_ACCESS) onKeyAccess(key);
++        final String spoof = pineSpoofProperty(key);
++        if (spoof != null) {
++            try {
++                return Long.parseLong(spoof);
++            } catch (NumberFormatException ignored) {
++                return def;
++            }
++        }
+         return native_get_long(key, def);
+     }
+ 
+@@ -212,6 +312,12 @@ public class SystemProperties {
+     @SystemApi
+     public static boolean getBoolean(@NonNull String key, boolean def) {
+         if (TRACK_KEY_ACCESS) onKeyAccess(key);
++        final String spoof = pineSpoofProperty(key);
++        if (spoof != null) {
++            return "1".equals(spoof) || "true".equals(spoof)
++                    || "y".equals(spoof) || "yes".equals(spoof)
++                    || "on".equals(spoof);
++        }
+         return native_get_boolean(key, def);
+     }
+ 

@@ -183,7 +183,6 @@ jobs:
           du -xhd1 android 2>/dev/null | sort -h | tail -40 || true
 
       - name: Build ART hot update targets
-        timeout-minutes: 180
         env:
           LUNCH_TARGET: ${{ inputs.lunch_target }}
           BUILD_TARGETS: ${{ inputs.build_targets }}

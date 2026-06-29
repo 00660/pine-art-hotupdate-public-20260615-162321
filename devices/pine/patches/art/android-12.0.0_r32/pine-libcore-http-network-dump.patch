@@ -1,0 +1,232 @@
+diff --git a/ojluni/src/main/java/java/net/HttpURLConnection.java b/ojluni/src/main/java/java/net/HttpURLConnection.java
+index 1234567..1234567 100644
+--- a/ojluni/src/main/java/java/net/HttpURLConnection.java
++++ b/ojluni/src/main/java/java/net/HttpURLConnection.java
+@@ -640,6 +640,7 @@ abstract public class HttpURLConnection extends URLConnection {
+                     }
+                 }
+                 this.method = method;
++                PineHttpDump.requestMeta(this, "Http.request.method");
+                 return;
+             }
+         }
+@@ -673,6 +674,7 @@ abstract public class HttpURLConnection extends URLConnection {
+          * We're got the response code already
+          */
+         if (responseCode != -1) {
++            PineHttpDump.response(this, responseCode, responseMessage);
+             return responseCode;
+         }
+ 
+@@ -728,9 +730,11 @@ abstract public class HttpURLConnection extends URLConnection {
+                 try {
+                     responseCode = Integer.parseInt
+                             (statusLine.substring(codePos+1, phrasePos));
++                    PineHttpDump.response(this, responseCode, responseMessage);
+                     return responseCode;
+-                } catch (NumberFormatException e) { }
++                } catch (NumberFormatException e) { PineHttpDump.response(this, -1, statusLine); }
+             }
+         }
++        PineHttpDump.response(this, -1, statusLine);
+         return -1;
+     }
+diff --git a/ojluni/src/main/java/java/net/URLConnection.java b/ojluni/src/main/java/java/net/URLConnection.java
+index 1234567..1234567 100644
+--- a/ojluni/src/main/java/java/net/URLConnection.java
++++ b/ojluni/src/main/java/java/net/URLConnection.java
+@@ -1107,6 +1107,7 @@ public abstract class URLConnection {
+             requests = new MessageHeader();
+ 
+         requests.set(key, value);
++        PineHttpDump.requestHeader(this, "set", key, value);
+     }
+ 
+     /**
+@@ -1132,6 +1133,7 @@ public abstract class URLConnection {
+             requests = new MessageHeader();
+ 
+         requests.add(key, value);
++        PineHttpDump.requestHeader(this, "add", key, value);
+     }
+ 
+ 
+@@ -1713,6 +1715,178 @@ public abstract class URLConnection {
+ 
+ }
+ 
++final class PineHttpDump {
++    private static final String BASE = "/data/temp/pine-crypto-dumps";
++    private static final String ENABLE = "/data/temp/pine-crypto-dump.enable";
++    private static final String PKG = "/data/temp/pine-crypto-dump.pkg";
++    private static final int MAX_VALUE = 2048;
++    private static final int MAX_HEADERS = 80;
++
++    private PineHttpDump() {}
++
++    static void requestHeader(URLConnection c, String action, String key, String value) {
++        try {
++            StringBuilder b = start("Http.request.header");
++            if (b == null) return;
++            common(b, c);
++            b.append("direction=request\n");
++            b.append("header_action=").append(clean(action)).append('\n');
++            b.append("header_key=").append(clean(key)).append('\n');
++            b.append("header_value=").append(limited(value)).append('\n');
++            out(b);
++        } catch (Throwable ignored) {}
++    }
++
++    static void requestMeta(HttpURLConnection c, String event) {
++        try {
++            StringBuilder b = start(event);
++            if (b == null) return;
++            common(b, c);
++            b.append("direction=request\n");
++            out(b);
++        } catch (Throwable ignored) {}
++    }
++
++    static void response(HttpURLConnection c, int code, String message) {
++        try {
++            StringBuilder b = start("Http.response");
++            if (b == null) return;
++            common(b, c);
++            b.append("direction=response\n");
++            b.append("response_code=").append(code).append('\n');
++            b.append("response_message=").append(clean(message)).append('\n');
++            appendHeaders(b, "response", c.getHeaderFields());
++            out(b);
++        } catch (Throwable ignored) {}
++    }
++
++    private static void common(StringBuilder b, URLConnection c) {
++        URL u = c.getURL();
++        b.append("url=").append(clean(String.valueOf(u))).append('\n');
++        if (u != null) {
++            b.append("scheme=").append(clean(u.getProtocol())).append('\n');
++            b.append("host=").append(clean(u.getHost())).append('\n');
++            b.append("port=").append(u.getPort()).append('\n');
++            b.append("path=").append(clean(u.getPath())).append('\n');
++            b.append("query=").append(clean(u.getQuery())).append('\n');
++        }
++        b.append("do_input=").append(c.getDoInput()).append('\n');
++        b.append("do_output=").append(c.getDoOutput()).append('\n');
++        b.append("use_caches=").append(c.getUseCaches()).append('\n');
++        b.append("connect_timeout=").append(c.getConnectTimeout()).append('\n');
++        b.append("read_timeout=").append(c.getReadTimeout()).append('\n');
++        if (c instanceof HttpURLConnection) {
++            HttpURLConnection h = (HttpURLConnection) c;
++            b.append("method=").append(clean(h.getRequestMethod())).append('\n');
++            b.append("follow_redirects=").append(h.getInstanceFollowRedirects()).append('\n');
++            b.append("chunk_length=").append(h.chunkLength).append('\n');
++            b.append("fixed_content_length=").append(h.fixedContentLength).append('\n');
++            b.append("fixed_content_length_long=").append(h.fixedContentLengthLong).append('\n');
++        }
++    }
++
++    private static void appendHeaders(StringBuilder b, String prefix, Map<String,List<String>> headers) {
++        if (headers == null) {
++            b.append(prefix).append("_header_count=0\n");
++            return;
++        }
++        int n = 0;
++        for (Map.Entry<String,List<String>> e : headers.entrySet()) {
++            if (n >= MAX_HEADERS) break;
++            String key = e.getKey();
++            List<String> values = e.getValue();
++            if (values == null || values.isEmpty()) {
++                appendHeader(b, prefix, n++, key, "");
++                continue;
++            }
++            for (String value : values) {
++                if (n >= MAX_HEADERS) break;
++                appendHeader(b, prefix, n++, key, value);
++            }
++        }
++        b.append(prefix).append("_header_count=").append(n).append('\n');
++    }
++
++    private static void appendHeader(StringBuilder b, String prefix, int index, String key, String value) {
++        b.append(prefix).append("_header_").append(index).append("_key=").append(clean(key)).append('\n');
++        b.append(prefix).append("_header_").append(index).append("_value=").append(limited(value)).append('\n');
++    }
++
++    private static StringBuilder start(String event) {
++        String p = pkg();
++        if (p == null || !(new java.io.File(ENABLE)).exists()) return null;
++        String target = small(PKG);
++        if (target.length() != 0 && !target.equals(p)) return null;
++        StringBuilder b = new StringBuilder(2048);
++        b.append("---\n");
++        b.append("event=").append(event).append('\n');
++        b.append("time_ms=").append(System.currentTimeMillis()).append('\n');
++        b.append("package=").append(p).append('\n');
++        b.append("thread=").append(clean(Thread.currentThread().getName())).append('\n');
++        return b;
++    }
++
++    private static String pkg() {
++        byte[] buf = new byte[256];
++        int c;
++        try (java.io.FileInputStream in = new java.io.FileInputStream("/proc/self/cmdline")) {
++            c = in.read(buf);
++        } catch (Throwable ignored) {
++            return null;
++        }
++        if (c <= 0) return null;
++        int n = 0;
++        while (n < c && buf[n] != 0) n++;
++        String p = new String(buf, 0, n, java.nio.charset.StandardCharsets.UTF_8);
++        int s = p.indexOf(':');
++        if (s >= 0) p = p.substring(0, s);
++        if (p.length() == 0) return null;
++        for (int i = 0; i < p.length(); i++) {
++            char ch = p.charAt(i);
++            if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
++                    (ch >= '0' && ch <= '9') || ch == '.' || ch == '_')) {
++                return null;
++            }
++        }
++        return p;
++    }
++
++    private static String small(String path) {
++        byte[] buf = new byte[256];
++        try (java.io.FileInputStream in = new java.io.FileInputStream(path)) {
++            int c = in.read(buf);
++            return c <= 0 ? "" : new String(buf, 0, c, java.nio.charset.StandardCharsets.UTF_8).trim();
++        } catch (Throwable ignored) {
++            return "";
++        }
++    }
++
++    private static String clean(String s) {
++        if (s == null) return "";
++        return s.replace('\n', ' ').replace('\r', ' ');
++    }
++
++    private static String limited(String s) {
++        s = clean(s);
++        if (s.length() <= MAX_VALUE) return s;
++        return s.substring(0, MAX_VALUE) + "...truncated_" + (s.length() - MAX_VALUE) + "_chars";
++    }
++
++    private static void out(StringBuilder b) {
++        String p = pkg();
++        if (p == null) return;
++        try {
++            java.io.File base = new java.io.File(BASE);
++            java.io.File dir = new java.io.File(base, p);
++            if ((!base.exists() && !base.mkdirs()) || (!dir.exists() && !dir.mkdirs())) return;
++            try (java.io.FileOutputStream o =
++                    new java.io.FileOutputStream(new java.io.File(dir, "http-network.log"), true)) {
++                o.write(b.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
++            }
++        } catch (Throwable ignored) {}
++    }
++}
++
+ 
+ class UnknownContentHandler extends ContentHandler {
+     static final ContentHandler INSTANCE = new UnknownContentHandler();

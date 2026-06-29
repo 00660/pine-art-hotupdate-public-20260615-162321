@@ -176,6 +176,7 @@ jobs:
           set -euo pipefail
           ART_PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch"
           LIBCORE_PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-libcore-crypto-dump.patch"
+          HTTP_NETWORK_PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-libcore-http-network-dump.patch"
           CONSCRYPT_PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-conscrypt-crypto-dump.patch"
           BORINGSSL_PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-boringssl-crypto-dump.patch"
           BIONIC_PATCH="$PWD/devices/pine/patches/bionic/android-12.0.0_r32/pine-bionic-linker-antidetect.patch"
@@ -193,6 +194,13 @@ jobs:
           grep -n "PineDigestDump" android/libcore/ojluni/src/main/java/java/security/MessageDigest.java
           grep -n "PineCryptoSpecDump" android/libcore/ojluni/src/main/java/javax/crypto/spec/SecretKeySpec.java
           git -C android/libcore diff > pine-libcore-crypto-dump-applied.diff
+          git -C android/libcore apply --check "$HTTP_NETWORK_PATCH"
+          git -C android/libcore apply "$HTTP_NETWORK_PATCH"
+          git -C android/libcore diff --check
+          grep -n "PineHttpDump" android/libcore/ojluni/src/main/java/java/net/URLConnection.java
+          grep -n "http-network.log" android/libcore/ojluni/src/main/java/java/net/URLConnection.java
+          grep -n "PineHttpDump.response" android/libcore/ojluni/src/main/java/java/net/HttpURLConnection.java
+          git -C android/libcore diff > pine-libcore-http-network-dump-applied.diff
           git -C android/external/conscrypt apply --check "$CONSCRYPT_PATCH"
           git -C android/external/conscrypt apply "$CONSCRYPT_PATCH"
           git -C android/external/conscrypt diff --check
@@ -308,6 +316,7 @@ jobs:
           cp pine-art-rom-resolved-manifest.xml artifacts/pine-art-hotupdate/
           cp pine-art-rom-applied.diff artifacts/pine-art-hotupdate/
           cp pine-libcore-crypto-dump-applied.diff artifacts/pine-art-hotupdate/
+          cp pine-libcore-http-network-dump-applied.diff artifacts/pine-art-hotupdate/
           cp pine-conscrypt-crypto-dump-applied.diff artifacts/pine-art-hotupdate/
           cp pine-boringssl-crypto-dump-applied.diff artifacts/pine-art-hotupdate/
           cp pine-bionic-linker-antidetect-applied.diff artifacts/pine-art-hotupdate/
@@ -335,6 +344,7 @@ jobs:
             echo "ROM baseline: pine Android 12 ART tag android-12.0.0_r32"
             echo "Patch: RegisterDexFile DEX dump hook + libcore Java crypto dump hook + Conscrypt TLS/provider crypto dump hook + BoringSSL native crypto dump hook"
             echo "Crypto dump output: /data/temp/pine-crypto-dumps/<package>/java-crypto.log"
+            echo "HTTP URL/header/status output: /data/temp/pine-crypto-dumps/<package>/http-network.log"
             echo "Conscrypt dump output: /data/temp/pine-crypto-dumps/<package>/conscrypt-crypto.log"
             echo "BoringSSL dump output: /data/temp/pine-crypto-dumps/<package>/boringssl-crypto.log"
             echo "Crypto dump switch: create /data/temp/pine-crypto-dump.enable; optional package filter in /data/temp/pine-crypto-dump.pkg"
@@ -365,6 +375,7 @@ jobs:
             pine-art-rom-resolved-manifest.xml
             pine-art-rom-applied.diff
             pine-libcore-crypto-dump-applied.diff
+            pine-libcore-http-network-dump-applied.diff
             pine-conscrypt-crypto-dump-applied.diff
             pine-boringssl-crypto-dump-applied.diff
             pine-bionic-linker-antidetect-applied.diff

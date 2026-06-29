@@ -21,7 +21,7 @@ on:
       build_targets:
         description: Space-separated Soong targets to build.
         required: false
-        default: com.android.art com.android.conscrypt com.android.runtime framework-minus-apex services
+        default: com.android.art com.android.conscrypt
       sync_jobs:
         description: repo sync jobs.
         required: false
@@ -171,7 +171,7 @@ jobs:
           repo manifest -r > ../pine-art-rom-resolved-manifest.xml
           git -C art rev-parse HEAD > ../pine-art-revision.txt
 
-      - name: Apply pine ART, crypto, and system anti-detection patches
+      - name: Apply pine ART and crypto patches
         run: |
           set -euo pipefail
           ART_PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-art-registerdexfile-dump.patch"
@@ -179,8 +179,6 @@ jobs:
           HTTP_NETWORK_PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-libcore-http-network-dump.patch"
           CONSCRYPT_PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-conscrypt-crypto-dump.patch"
           BORINGSSL_PATCH="$PWD/devices/pine/patches/art/android-12.0.0_r32/pine-boringssl-crypto-dump.patch"
-          BIONIC_PATCH="$PWD/devices/pine/patches/bionic/android-12.0.0_r32/pine-bionic-linker-antidetect.patch"
-          FRAMEWORK_PATCH="$PWD/devices/pine/patches/frameworks-base/android-12.0.0_r32/pine-framework-antidetect.patch"
           git -C android/art apply --check "$ART_PATCH"
           git -C android/art apply "$ART_PATCH"
           git -C android/art diff --check
@@ -216,18 +214,6 @@ jobs:
           grep -n "BoringSSL.HMAC_Update" android/external/boringssl/src/crypto/fipsmodule/hmac/hmac.c
           grep -n "BoringSSL.SHA512_Update" android/external/boringssl/src/crypto/fipsmodule/sha/sha512.c
           git -C android/external/boringssl diff > pine-boringssl-crypto-dump-applied.diff
-          git -C android/bionic apply --check "$BIONIC_PATCH"
-          git -C android/bionic apply "$BIONIC_PATCH"
-          git -C android/bionic diff --check
-          grep -n "__pine_bionic_should_hide_path" android/bionic/libc/bionic/pine_antidetect.cpp
-          grep -n "pine_linker_should_block_library" android/bionic/linker/linker.cpp
-          git -C android/bionic diff > pine-bionic-linker-antidetect-applied.diff
-          git -C android/frameworks/base apply --check "$FRAMEWORK_PATCH"
-          git -C android/frameworks/base apply "$FRAMEWORK_PATCH"
-          git -C android/frameworks/base diff --check
-          grep -n "pineSpoofProperty" android/frameworks/base/core/java/android/os/SystemProperties.java
-          grep -n "pineShouldHidePackage" android/frameworks/base/core/java/android/app/ApplicationPackageManager.java
-          git -C android/frameworks/base diff > pine-framework-antidetect-applied.diff
 
       - name: Drop repo metadata before build
         run: |
@@ -249,7 +235,7 @@ jobs:
         run: |
           set -eo pipefail
           LUNCH_TARGET="${LUNCH_TARGET:-aosp_arm64-user}"
-          BUILD_TARGETS="${BUILD_TARGETS:-com.android.art com.android.conscrypt com.android.runtime framework-minus-apex services}"
+          BUILD_TARGETS="${BUILD_TARGETS:-com.android.art com.android.conscrypt}"
           BUILD_JOBS="${BUILD_JOBS:-1}"
           cd android
           export TOP="${TOP:-$PWD}"
@@ -271,6 +257,16 @@ jobs:
           echo "BUILD_ID=$(get_build_var BUILD_ID)" | tee -a ../pine-art-build.env
           echo "PRODUCT_OUT=$(get_build_var PRODUCT_OUT)" | tee -a ../pine-art-build.env
           read -r -a targets <<< "$BUILD_TARGETS"
+          for target in "${targets[@]}"; do
+            case "$target" in
+              com.android.art|com.android.conscrypt) ;;
+              *)
+                echo "Unsupported target for Pine ART/CRY safe build: $target" >&2
+                echo "Only com.android.art and com.android.conscrypt are allowed; do not build framework/services/bionic replacement artifacts." >&2
+                exit 1
+                ;;
+            esac
+          done
           echo "BUILD_TARGETS=${targets[*]}" | tee -a ../pine-art-build.env
           echo "BUILD_JOBS=$BUILD_JOBS" | tee -a ../pine-art-build.env
           echo "Starting build with ${BUILD_JOBS} jobs for targets: ${targets[*]}"
@@ -319,12 +315,10 @@ jobs:
           cp pine-libcore-http-network-dump-applied.diff artifacts/pine-art-hotupdate/
           cp pine-conscrypt-crypto-dump-applied.diff artifacts/pine-art-hotupdate/
           cp pine-boringssl-crypto-dump-applied.diff artifacts/pine-art-hotupdate/
-          cp pine-bionic-linker-antidetect-applied.diff artifacts/pine-art-hotupdate/
-          cp pine-framework-antidetect-applied.diff artifacts/pine-art-hotupdate/
           cp devices/pine/tools/pine-so-analysis.py artifacts/pine-art-hotupdate/tools/
-          mapfile -t apex_files < <(find android/out -type f \( -name 'com.android.art*.apex' -o -name 'com.android.runtime*.apex' -o -name 'com.android.conscrypt*.apex' \) | sort)
+          mapfile -t apex_files < <(find android/out -type f \( -name 'com.android.art*.apex' -o -name 'com.android.conscrypt*.apex' \) | sort)
           if [ "${#apex_files[@]}" -eq 0 ]; then
-            echo "No ART/runtime/Conscrypt APEX files produced." >&2
+            echo "No ART/Conscrypt APEX files produced." >&2
             find android/out -type f \( -name '*art*.apex' -o -name '*conscrypt*.apex' -o -name 'libart.so' -o -name 'libdexfile.so' -o -name 'libjavacrypto.so' -o -name 'libcrypto.so' -o -name 'libssl.so' \) | sort | head -n 200 >&2
             exit 1
           fi
@@ -332,30 +326,24 @@ jobs:
           for file in "${apex_files[@]}"; do
             cp -f "$file" artifacts/pine-art-hotupdate/files/
           done
-          mapfile -t system_files < <(find android/out -type f \( -path '*/system/framework/framework.jar' -o -path '*/system/framework/services.jar' -o -name 'framework-minus-apex.jar' -o -name 'services.jar' \) | sort)
-          printf '%s\n' "${system_files[@]}" > artifacts/pine-art-hotupdate/system-files.txt
-          for file in "${system_files[@]}"; do
-            cp -f "$file" artifacts/pine-art-hotupdate/files/ || true
-          done
           find android/out -type f \( -name 'libart.so' -o -name 'libartbase.so' -o -name 'libdexfile.so' -o -name 'libartpalette.so' -o -name 'libjavacrypto.so' -o -name 'libcrypto.so' -o -name 'libssl.so' \) | sort > artifacts/pine-art-hotupdate/runtime-libs.txt
           {
             echo "# pine ART and Conscrypt hot update"
             echo
             echo "ROM baseline: pine Android 12 ART tag android-12.0.0_r32"
-            echo "Patch: RegisterDexFile DEX dump hook + libcore Java crypto dump hook + Conscrypt TLS/provider crypto dump hook + BoringSSL native crypto dump hook"
+            echo "Patch: RegisterDexFile DEX dump hook + libcore Java crypto/HTTP network dump hook + Conscrypt TLS/provider crypto dump hook + BoringSSL native crypto dump hook"
+            echo "Scope: ART/Conscrypt APEX only. Do not replace framework.jar, services.jar, bionic, linker, or libc from this artifact."
             echo "Crypto dump output: /data/temp/pine-crypto-dumps/<package>/java-crypto.log"
             echo "HTTP URL/header/status output: /data/temp/pine-crypto-dumps/<package>/http-network.log"
             echo "Conscrypt dump output: /data/temp/pine-crypto-dumps/<package>/conscrypt-crypto.log"
             echo "BoringSSL dump output: /data/temp/pine-crypto-dumps/<package>/boringssl-crypto.log"
             echo "Crypto dump switch: create /data/temp/pine-crypto-dump.enable; optional package filter in /data/temp/pine-crypto-dump.pkg"
-            echo "System anti-detect switch: set debug.pine.hide_pkg, debug.pine.native_hide=1, and debug.pine.framework_hide=1"
             echo "Native SO analysis: tools/pine-so-analysis.py --out <report-dir> <apk-or-so-or-dir>"
             echo
             echo "Generated files:"
             sed 's#^#- #' artifacts/pine-art-hotupdate/apex-files.txt
-            sed 's#^#- #' artifacts/pine-art-hotupdate/system-files.txt
             echo
-            echo "Use devices/pine/scripts/install-pine-art-hotupdate.ps1 from this repo to push and stage the APEX on device 103."
+            echo "Deploy only the ART/Conscrypt APEX files after confirming rollback. Do not deploy framework/services jars."
           } > artifacts/pine-art-hotupdate/README.md
           (cd artifacts/pine-art-hotupdate && sha256sum files/* *.txt *.env *.diff *.xml README.md > SHA256SUMS)
 
@@ -378,8 +366,6 @@ jobs:
             pine-libcore-http-network-dump-applied.diff
             pine-conscrypt-crypto-dump-applied.diff
             pine-boringssl-crypto-dump-applied.diff
-            pine-bionic-linker-antidetect-applied.diff
-            pine-framework-antidetect-applied.diff
 
       - name: Upload ART hot update artifact
         uses: actions/upload-artifact@v4

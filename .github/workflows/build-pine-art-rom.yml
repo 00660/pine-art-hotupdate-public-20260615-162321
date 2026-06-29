@@ -102,6 +102,7 @@ jobs:
           df -h
 
       - name: Sync Android 12 ART build tree
+        timeout-minutes: 100
         env:
           MANIFEST_URL: ${{ inputs.manifest_url }}
           MANIFEST_BRANCH: ${{ inputs.manifest_branch }}
@@ -111,10 +112,62 @@ jobs:
           MANIFEST_URL="${MANIFEST_URL:-https://android.googlesource.com/platform/manifest}"
           MANIFEST_BRANCH="${MANIFEST_BRANCH:-android-12.0.0_r32}"
           SYNC_JOBS="${SYNC_JOBS:-2}"
+          SYNC_ATTEMPTS=2
+          SYNC_TIMEOUT=45m
           mkdir -p android
           cd android
           repo init -u "$MANIFEST_URL" -b "$MANIFEST_BRANCH" --depth=1
-          repo sync -c --no-tags --no-clone-bundle --optimized-fetch --prune -j"$SYNC_JOBS"
+
+          sync_once() {
+            attempt="$1"
+            log="../pine-art-sync-attempt-${attempt}.log"
+            status="../pine-art-sync-attempt-${attempt}.status"
+            rm -f "$status"
+            echo "== repo sync attempt $attempt started at $(date -Is) ==" | tee "$log"
+            echo "manifest_url=$MANIFEST_URL manifest_branch=$MANIFEST_BRANCH sync_jobs=$SYNC_JOBS timeout=$SYNC_TIMEOUT" | tee -a "$log"
+            set +e
+            (
+              timeout "$SYNC_TIMEOUT" repo sync -c --no-tags --no-clone-bundle --optimized-fetch --prune -j"$SYNC_JOBS"
+              echo "$?" > "$status"
+            ) 2>&1 | tee -a "$log" &
+            sync_pid="$!"
+            elapsed=0
+            while kill -0 "$sync_pid" 2>/dev/null; do
+              sleep 60
+              elapsed=$((elapsed + 60))
+              {
+                echo "== repo sync heartbeat attempt=$attempt elapsed=${elapsed}s at $(date -Is) =="
+                df -h . || true
+                free -h || true
+                ps -eo pid,ppid,stat,etime,cmd | grep -E 'repo|git|ssh|curl' | grep -v grep | tail -30 || true
+              } | tee -a "$log"
+            done
+            wait "$sync_pid"
+            tee_status="$?"
+            sync_status="$(cat "$status" 2>/dev/null || echo "$tee_status")"
+            set -e
+            echo "== repo sync attempt $attempt finished with status $sync_status at $(date -Is) ==" | tee -a "$log"
+            {
+              echo "== android top-level disk after sync attempt $attempt =="
+              du -xhd1 . 2>/dev/null | sort -h | tail -40 || true
+            } | tee -a "$log"
+            return "$sync_status"
+          }
+
+          sync_ok=0
+          for attempt in $(seq 1 "$SYNC_ATTEMPTS"); do
+            if sync_once "$attempt"; then
+              sync_ok=1
+              break
+            fi
+            echo "repo sync attempt $attempt failed; retrying after cleanup" | tee -a "../pine-art-sync-attempt-${attempt}.log"
+            repo sync --fail-fast -l -j1 >/dev/null 2>&1 || true
+            sleep 20
+          done
+          [ "$sync_ok" = "1" ] || {
+            echo "repo sync failed after $SYNC_ATTEMPTS attempts" >&2
+            exit 1
+          }
           repo manifest -r > ../pine-art-rom-resolved-manifest.xml
           git -C art rev-parse HEAD > ../pine-art-revision.txt
 
@@ -306,6 +359,8 @@ jobs:
           path: |
             pine-art-build.log
             pine-art-build.env
+            pine-art-sync-attempt-*.log
+            pine-art-sync-attempt-*.status
             pine-art-revision.txt
             pine-art-rom-resolved-manifest.xml
             pine-art-rom-applied.diff

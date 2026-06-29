@@ -45,7 +45,6 @@ concurrency:
 jobs:
   build-pine-art-rom:
     runs-on: ubuntu-22.04
-    timeout-minutes: 360
     env:
       USE_CCACHE: 0
     steps:
@@ -103,7 +102,6 @@ jobs:
           df -h
 
       - name: Sync Android 12 ART build tree
-        timeout-minutes: 90
         env:
           MANIFEST_URL: ${{ inputs.manifest_url }}
           MANIFEST_BRANCH: ${{ inputs.manifest_branch }}

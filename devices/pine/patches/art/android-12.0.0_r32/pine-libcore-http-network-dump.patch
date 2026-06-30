@@ -58,9 +58,11 @@ index 1234567..1234567 100644
 +final class PineHttpDump {
 +    private static final String BASE = "/data/temp/pine-crypto-dumps";
 +    private static final String ENABLE = "/data/temp/pine-crypto-dump.enable";
-+    private static final String PKG = "/data/temp/pine-crypto-dump.pkg";
++    private static final String TARGET_PROP = "debug.pine.http_dump_pkg";
 +    private static final int MAX_VALUE = 2048;
 +    private static final int MAX_HEADERS = 80;
++    private static volatile String cachedTarget = "";
++    private static volatile long cachedTargetMs = 0;
 +
 +    private PineHttpDump() {}
 +
@@ -154,9 +156,10 @@ index 1234567..1234567 100644
 +
 +    private static StringBuilder start(String event) {
 +        String p = pkg();
-+        if (p == null || !(new java.io.File(ENABLE)).exists()) return null;
-+        String target = small(PKG);
-+        if (target.length() != 0 && !target.equals(p)) return null;
++        if (p == null) return null;
++        String target = targetPkg();
++        if (target.length() == 0 || !target.equals(p)) return null;
++        if (!(new java.io.File(ENABLE)).exists()) return null;
 +        StringBuilder b = new StringBuilder(2048);
 +        b.append("---\n");
 +        b.append("event=").append(event).append('\n');
@@ -191,14 +194,21 @@ index 1234567..1234567 100644
 +        return p;
 +    }
 +
-+    private static String small(String path) {
-+        byte[] buf = new byte[256];
-+        try (java.io.FileInputStream in = new java.io.FileInputStream(path)) {
-+            int c = in.read(buf);
-+            return c <= 0 ? "" : new String(buf, 0, c, java.nio.charset.StandardCharsets.UTF_8).trim();
-+        } catch (Throwable ignored) {
-+            return "";
-+        }
++    private static String targetPkg() {
++        long now = System.currentTimeMillis();
++        String target = cachedTarget;
++        if (now - cachedTargetMs < 1000) return target;
++        target = "";
++        try {
++            Class<?> c = Class.forName("android.os.SystemProperties");
++            Object v = c.getMethod("get", String.class, String.class)
++                    .invoke(null, TARGET_PROP, "");
++            if (v != null) target = clean(String.valueOf(v)).trim();
++        } catch (Throwable ignored) {}
++        if ("__disabled__".equals(target)) target = "";
++        cachedTarget = target;
++        cachedTargetMs = now;
++        return target;
 +    }
 +
 +    private static String clean(String s) {

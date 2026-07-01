@@ -51,7 +51,7 @@ index 1234567..1234567 100644
      }
  
  
-@@ -1713,6 +1715,178 @@ public abstract class URLConnection {
+@@ -1713,6 +1715,188 @@ public abstract class URLConnection {
  
  }
  
